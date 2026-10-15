@@ -2,8 +2,16 @@
 import { createApp } from '../src/app.js';
 import { openDatabase } from '../src/db/connection.js';
 
+export const TEST_USER_ID = 'user_test';
+
+/** Stand-in for Clerk auth: every request is signed in as TEST_USER_ID. */
+export function testAuth(req, res, next) {
+  req.userId = TEST_USER_ID;
+  next();
+}
+
 export async function startTestServer({ db = openDatabase(':memory:') } = {}) {
-  const server = createApp({ db, serveClient: false }).listen(0);
+  const server = createApp({ db, serveClient: false, auth: testAuth }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
 

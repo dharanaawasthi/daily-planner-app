@@ -5,6 +5,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { openDatabase } from '../src/db/connection.js';
 import { resetWithSampleTasks } from '../src/db/seed.js';
+import { testAuth } from './helpers.js';
 
 const TODAY = '2026-10-15';
 
@@ -34,7 +35,7 @@ const findByTitle = async (title) =>
 
 before(async () => {
   db = openDatabase(':memory:');
-  server = createApp({ db, serveClient: false }).listen(0);
+  server = createApp({ db, serveClient: false, auth: testAuth }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
 });

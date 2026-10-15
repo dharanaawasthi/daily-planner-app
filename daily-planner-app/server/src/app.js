@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createTaskRepository } from './db/taskRepository.js';
 import { HttpError } from './lib/errors.js';
+import { createClerkAuth } from './middleware/auth.js';
 import { createTasksRouter } from './routes/tasks.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -12,13 +13,18 @@ const CLIENT_DIST = path.resolve(here, '../../client/dist');
 /**
  * Build the Express app around an open database. Kept separate from
  * index.js so tests can create an app on an in-memory database.
+ *
+ * `auth` guards every /api route and sets req.userId; tests pass a stand-in.
  */
-export function createApp({ db, serveClient = true }) {
+export function createApp({ db, serveClient = true, auth = createClerkAuth() }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
 
   // ── API ──────────────────────────────────────────────────────────────
+  // Every /api request needs a verified Clerk session (401 JSON otherwise).
+  app.use('/api', auth);
+
   app.get('/api/health', (req, res) => {
     res.json({ ok: true });
   });

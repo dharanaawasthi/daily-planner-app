@@ -63,11 +63,21 @@ The React app requires sign-in with [Clerk](https://clerk.com) before the planne
    ```
    VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
    ```
-3. Restart `npm run dev`. Until a real key is set, the app shows a setup message instead.
+3. Copy the **secret key** (API keys → starts with `sk_test_` or `sk_live_`) into
+   `server/.env` (Git ignores this file; `server/.env.example` shows the format):
+   ```
+   CLERK_SECRET_KEY=sk_test_...
+   ```
+   The API refuses to start without it. Real environment variables take precedence over the file.
+4. Restart `npm run dev`. Until a real publishable key is set, the app shows a setup message instead.
 
-> Only the client is protected so far: the Express API does not check sign-in yet, so
-> anyone who can reach port 3001 can still read and change tasks, and all signed-in users
-> share the same task list. Never put Clerk's secret key (`sk_...`) in the client.
+Every `/api` route, including `/api/health`, requires a verified Clerk session token
+(`Authorization: Bearer <token>`, which the React app attaches automatically) and returns
+`401 { "error": "Authentication required" }` without one. Handlers receive the Clerk user ID
+as `req.userId`.
+
+> All signed-in users still share the same task list: tasks are not yet stored per user.
+> Never put Clerk's secret key (`sk_...`) in the client.
 
 ### Other commands (run from the project root)
 
@@ -84,6 +94,7 @@ The React app requires sign-in with [Clerk](https://clerk.com) before the planne
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `CLERK_SECRET_KEY` | — (required) | (server) Clerk secret key for verifying session tokens; set in `server/.env` |
 | `PORT` | `3001` | API port |
 | `DB_PATH` | `server/data/planner.db` | SQLite file location |
 | `SEED_ON_EMPTY` | `true` | Set to `false` to start with an empty database |
@@ -107,10 +118,11 @@ daily-planner/
 ├── package.json              # npm workspaces + root scripts
 ├── server/
 │   ├── package.json
+│   ├── .env.example          # CLERK_SECRET_KEY= (copy to .env, git-ignored)
 │   ├── data/                 # planner.db lives here (git-ignored)
 │   ├── scripts/seed.js       # npm run seed — reset to sample data
 │   ├── src/
-│   │   ├── index.js          # starts the server, seeds an empty DB
+│   │   ├── index.js          # loads server/.env, starts the server, seeds an empty DB
 │   │   ├── app.js            # Express app: JSON, routes, errors, static client
 │   │   ├── db/
 │   │   │   ├── migrations/   # 001_initial.sql, 002_planning_fields.sql, …
@@ -118,9 +130,11 @@ daily-planner/
 │   │   │   ├── taskRepository.js  # all task SQL
 │   │   │   └── seed.js       # sample tasks relative to today
 │   │   ├── routes/tasks.js   # /api/tasks endpoints
+│   │   ├── middleware/auth.js # Clerk session check on /api → req.userId or 401
 │   │   └── lib/              # dates, validation, HTTP errors
 │   └── test/
 │       ├── api.test.js             # end-to-end API tests (node:test)
+│       ├── auth.test.js            # /api requires a Clerk session (401 otherwise)
 │       ├── planning-fields.test.js # new planning fields: defaults, validation, rules
 │       ├── migrations.test.js      # upgrading a v1 database keeps all data
 │       └── helpers.js              # shared test server
@@ -207,6 +221,9 @@ Without it, the server's local date is used.
 ---
 
 ## API
+
+Every route requires a Clerk session token (`Authorization: Bearer <token>`); without a
+valid one the response is `401 { "error": "Authentication required" }`.
 
 All responses are JSON. Errors look like
 `{ "error": "Validation failed", "details": { "endTime": "End time must be after the start time" } }`.

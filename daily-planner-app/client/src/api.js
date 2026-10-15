@@ -6,14 +6,32 @@
 // rule (status = open AND scheduledDate < today) follows the user's time zone,
 // not the server's.
 
+//
+// Every request carries the signed-in user's Clerk session token
+// (Authorization: Bearer …); the API answers 401 without one.
+
 const UNREACHABLE = 'Couldn’t reach the server. Check that it’s running and try again.';
 
+let getToken = async () => null;
+
+/** Called once signed in with Clerk's getToken (fresh, short-lived tokens). */
+export function setTokenProvider(provider) {
+  getToken = provider ?? (async () => null);
+}
+
 async function request(path, { method = 'GET', body } = {}) {
+  // If Clerk can't produce a token, send none; the API then answers 401.
+  const token = await getToken().catch(() => null);
+  const headers = {
+    ...(body !== undefined && { 'Content-Type': 'application/json' }),
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+
   let res;
   try {
     res = await fetch(`/api${path}`, {
       method,
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {

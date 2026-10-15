@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { ClerkFailed, ClerkLoaded, ClerkLoading, Show, SignIn, UserButton } from '@clerk/react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { ClerkFailed, ClerkLoaded, ClerkLoading, Show, SignIn, UserButton, useAuth } from '@clerk/react';
+import { setTokenProvider } from './api.js';
 import BacklogItem from './components/BacklogItem.jsx';
 import CompletedSection from './components/CompletedSection.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
@@ -99,8 +100,21 @@ export default function App() {
   );
 }
 
+/**
+ * Attach the signed-in user's Clerk session token to every API request.
+ * A layout effect runs before the planner's first data fetch (a passive effect).
+ */
+function useApiAuth() {
+  const { getToken } = useAuth();
+  useLayoutEffect(() => {
+    setTokenProvider(() => getToken());
+    return () => setTokenProvider(null);
+  }, [getToken]);
+}
+
 /** The planner itself (unchanged), shown only to signed-in users. */
 function Planner() {
+  useApiAuth();
   const { today, data, load, retry, isPending, notice, notify, clearNotice, actions } = usePlanner();
   const planning = usePlanningSettings(today);
   const [settingsOpen, setSettingsOpen] = useState(false);

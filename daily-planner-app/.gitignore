@@ -9,3 +9,5 @@ server/data/*.db-shm
 .env.*.local
 .DS_Store
 *.log
+# Server secrets (Clerk secret key) — copy server/.env.example to create it
+server/.env
