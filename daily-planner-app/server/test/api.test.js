@@ -5,7 +5,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { openDatabase } from '../src/db/connection.js';
 import { resetWithSampleTasks } from '../src/db/seed.js';
-import { testAuth } from './helpers.js';
+import { TEST_USER_ID, testAuth } from './helpers.js';
 
 const TODAY = '2026-10-15';
 
@@ -46,31 +46,31 @@ after(() => {
 });
 
 beforeEach(() => {
-  resetWithSampleTasks(db, TODAY);
+  resetWithSampleTasks(db, TEST_USER_ID, TODAY);
 });
 
 describe('schema', () => {
   test('tasks table has exactly the data-model columns', () => {
     const cols = db.prepare('PRAGMA table_info(tasks)').all().map((c) => c.name);
     assert.deepEqual(cols, [
-      'id', 'title', 'category', 'scheduledDate', 'startTime', 'endTime',
+      'id', 'ownerId', 'title', 'category', 'scheduledDate', 'startTime', 'endTime',
       'notes', 'status', 'completedAt', 'createdAt', 'updatedAt',
-      // added by migration 002
+      // planning fields (migration 002)
       'durationMinutes', 'priority', 'dueDate', 'isFixed', 'energy',
     ]);
   });
 
   test('database rejects a "backlog" status — backlog is derived, not stored', () => {
     assert.throws(() =>
-      db.prepare(`INSERT INTO tasks (title, category, scheduledDate, status, createdAt, updatedAt)
-                  VALUES ('x', 'Study', '2026-10-01', 'backlog', 'now', 'now')`).run(),
+      db.prepare(`INSERT INTO tasks (ownerId, title, category, scheduledDate, status, createdAt, updatedAt)
+                  VALUES ('user_test', 'x', 'Study', '2026-10-01', 'backlog', 'now', 'now')`).run(),
     );
   });
 
   test('database keeps completedAt consistent with status', () => {
     const insert = (status, completedAt) =>
-      db.prepare(`INSERT INTO tasks (title, category, scheduledDate, status, completedAt, createdAt, updatedAt)
-                  VALUES ('x', 'Study', '2026-10-01', ?, ?, 'now', 'now')`).run(status, completedAt);
+      db.prepare(`INSERT INTO tasks (ownerId, title, category, scheduledDate, status, completedAt, createdAt, updatedAt)
+                  VALUES ('user_test', 'x', 'Study', '2026-10-01', ?, ?, 'now', 'now')`).run(status, completedAt);
 
     assert.throws(() => insert('completed', null)); // completed needs a timestamp
     assert.throws(() => insert('open', 'now')); // open must not have one

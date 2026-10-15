@@ -10,13 +10,27 @@ const COLUMNS = `id, title, category, scheduledDate, startTime, endTime, notes,
 // in the order they were created.
 const BY_START_TIME = `ORDER BY startTime IS NULL, startTime, endTime, createdAt, id`;
 
+/**
+ * Every task belongs to one owner (the verified Clerk user ID). Refuse to run
+ * any query without one, so a wiring mistake can never fall back to "all tasks".
+ */
+function requireOwner(ownerId) {
+  if (typeof ownerId !== 'string' || !ownerId.trim()) {
+    throw new Error('Task repository called without an owner');
+  }
+  return ownerId;
+}
+
 /** SQLite stores booleans as 0/1; the API speaks true/false. */
 function toTask(row) {
   if (!row) return null;
   return { ...row, isFixed: row.isFixed === 1 };
 }
 
-/** The exact parameters the INSERT/UPDATE statements expect. */
+/**
+ * The exact parameters the INSERT/UPDATE statements expect. ownerId is never
+ * taken from task fields: it is bound separately from the authenticated user.
+ */
 function toRow(task) {
   return {
     title: task.title,
@@ -39,16 +53,20 @@ function toRow(task) {
 /**
  * All SQL for tasks lives here. Routes call these methods and never touch
  * the database directly. Every method returns API-shaped tasks.
+ *
+ * Every method takes the owner's ID first and every statement filters on it,
+ * so a task that belongs to someone else behaves exactly like one that
+ * doesn't exist (null / false).
  */
 export function createTaskRepository(db) {
   const stmt = {
-    byId: db.prepare(`SELECT ${COLUMNS} FROM tasks WHERE id = ?`),
+    byId: db.prepare(`SELECT ${COLUMNS} FROM tasks WHERE id = ? AND ownerId = ?`),
 
     insert: db.prepare(`
-      INSERT INTO tasks (title, category, scheduledDate, startTime, endTime, notes,
+      INSERT INTO tasks (ownerId, title, category, scheduledDate, startTime, endTime, notes,
                          status, completedAt, durationMinutes, priority, dueDate, isFixed, energy,
                          createdAt, updatedAt)
-      VALUES (@title, @category, @scheduledDate, @startTime, @endTime, @notes,
+      VALUES (@ownerId, @title, @category, @scheduledDate, @startTime, @endTime, @notes,
               @status, @completedAt, @durationMinutes, @priority, @dueDate, @isFixed, @energy,
               @createdAt, @updatedAt)`),
 
@@ -60,22 +78,22 @@ export function createTaskRepository(db) {
              durationMinutes = @durationMinutes, priority = @priority, dueDate = @dueDate,
              isFixed = @isFixed, energy = @energy,
              updatedAt = @updatedAt
-       WHERE id = @id`),
+       WHERE id = @id AND ownerId = @ownerId`),
 
-    remove: db.prepare(`DELETE FROM tasks WHERE id = ?`),
+    remove: db.prepare(`DELETE FROM tasks WHERE id = ? AND ownerId = ?`),
 
     forDateAndStatus: db.prepare(`
       SELECT ${COLUMNS} FROM tasks
-       WHERE scheduledDate = ? AND status = ?
+       WHERE ownerId = ? AND scheduledDate = ? AND status = ?
        ${BY_START_TIME}`),
 
     // The backlog rule, and nothing else: open AND scheduled before today.
     backlog: db.prepare(`
       SELECT ${COLUMNS} FROM tasks
-       WHERE status = 'open' AND scheduledDate < ?
+       WHERE ownerId = ? AND status = 'open' AND scheduledDate < ?
        ORDER BY scheduledDate, startTime IS NULL, startTime, createdAt, id`),
 
-    count: db.prepare(`SELECT COUNT(*) AS n FROM tasks`),
+    count: db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ownerId = ?`),
   };
 
   /** Keep completedAt in sync with status. */
@@ -91,14 +109,14 @@ export function createTaskRepository(db) {
   }
 
   return {
-    findById(id) {
-      return toTask(stmt.byId.get(id));
+    findById(ownerId, id) {
+      return toTask(stmt.byId.get(id, requireOwner(ownerId)));
     },
 
     /** Flexible list for future views: optional date / status / category / range filters. */
-    list({ date, from, to, status, category } = {}) {
-      const where = [];
-      const params = [];
+    list(ownerId, { date, from, to, status, category } = {}) {
+      const where = ['ownerId = ?'];
+      const params = [requireOwner(ownerId)];
       if (date) { where.push('scheduledDate = ?'); params.push(date); }
       if (from) { where.push('scheduledDate >= ?'); params.push(from); }
       if (to) { where.push('scheduledDate <= ?'); params.push(to); }
@@ -106,24 +124,27 @@ export function createTaskRepository(db) {
       if (category) { where.push('category = ?'); params.push(category); }
 
       const sql = `SELECT ${COLUMNS} FROM tasks
-                   ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+                   WHERE ${where.join(' AND ')}
                    ORDER BY scheduledDate, startTime IS NULL, startTime, createdAt, id`;
       return db.prepare(sql).all(...params).map(toTask);
     },
 
     /** Everything the Today view needs, already split and sorted by start time. */
-    forDay(date) {
+    forDay(ownerId, date) {
+      requireOwner(ownerId);
       return {
-        open: stmt.forDateAndStatus.all(date, 'open').map(toTask),
-        completed: stmt.forDateAndStatus.all(date, 'completed').map(toTask),
+        open: stmt.forDateAndStatus.all(ownerId, date, 'open').map(toTask),
+        completed: stmt.forDateAndStatus.all(ownerId, date, 'completed').map(toTask),
       };
     },
 
-    backlog(today) {
-      return stmt.backlog.all(today).map(toTask);
+    backlog(ownerId, today) {
+      return stmt.backlog.all(requireOwner(ownerId), today).map(toTask);
     },
 
-    create(fields) {
+    /** Create a task owned by `ownerId` (any ownerId in `fields` is ignored). */
+    create(ownerId, fields) {
+      requireOwner(ownerId);
       const now = nowIso();
       const task = {
         title: fields.title,
@@ -145,13 +166,13 @@ export function createTaskRepository(db) {
       task.completedAt = stampCompletion(task, null);
       assertValid(task);
 
-      const { lastInsertRowid } = stmt.insert.run({ ...toRow(task), createdAt: now });
-      return this.findById(Number(lastInsertRowid));
+      const { lastInsertRowid } = stmt.insert.run({ ...toRow(task), ownerId, createdAt: now });
+      return this.findById(ownerId, Number(lastInsertRowid));
     },
 
-    /** Partial update. Returns the updated task, or null if it doesn't exist. */
-    update(id, changes) {
-      const existing = this.findById(id);
+    /** Partial update. Returns the updated task, or null if the owner has no such task. */
+    update(ownerId, id, changes) {
+      const existing = this.findById(ownerId, id);
       if (!existing) return null;
 
       const task = { ...existing, ...changes };
@@ -164,16 +185,16 @@ export function createTaskRepository(db) {
       task.updatedAt = nowIso();
       assertValid(task);
 
-      stmt.update.run({ ...toRow(task), id });
-      return this.findById(id);
+      stmt.update.run({ ...toRow(task), id, ownerId });
+      return this.findById(ownerId, id);
     },
 
-    remove(id) {
-      return stmt.remove.run(id).changes > 0;
+    remove(ownerId, id) {
+      return stmt.remove.run(id, requireOwner(ownerId)).changes > 0;
     },
 
-    count() {
-      return stmt.count.get().n;
+    count(ownerId) {
+      return stmt.count.get(requireOwner(ownerId)).n;
     },
 
     /** Run several repository calls atomically. */

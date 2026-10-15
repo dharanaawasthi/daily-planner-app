@@ -1,5 +1,6 @@
-// Migrations: fresh databases, upgrading a version-1 database with real data,
-// idempotence, and refusing a database from a newer app.
+// Migrations: fresh databases, upgrading a version-1 database with real data
+// (002), the deliberate reset of shared tasks (003), idempotence, and refusing
+// a database from a newer app.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -7,7 +8,7 @@ import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import Database from 'better-sqlite3';
 import { MIGRATIONS, SCHEMA_VERSION, migrate, openDatabase } from '../src/db/connection.js';
-import { startTestServer } from './helpers.js';
+import { TEST_USER_ID, startTestServer } from './helpers.js';
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'planner-migrations-'));
 after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
@@ -33,7 +34,7 @@ describe('fresh database', () => {
   test('is created at the latest version with every migration applied', () => {
     const db = openDatabase(':memory:');
     assert.equal(db.pragma('user_version', { simple: true }), SCHEMA_VERSION);
-    assert.equal(SCHEMA_VERSION, 2);
+    assert.equal(SCHEMA_VERSION, 3);
     db.close();
   });
 
@@ -44,15 +45,28 @@ describe('fresh database', () => {
   });
 });
 
-describe('upgrading a version-1 database', () => {
-  const file = path.join(tmpDir, 'v1.db');
+/** Apply migrations up to (and including) `version` only, as an older app would. */
+function migrateTo(file, version) {
+  const db = new Database(file);
+  for (const m of MIGRATIONS) {
+    if (m.version <= db.pragma('user_version', { simple: true }) || m.version > version) continue;
+    db.transaction(() => {
+      db.exec(m.sql);
+      db.pragma(`user_version = ${m.version}`);
+    })();
+  }
+  return db;
+}
+
+describe('migration 002 on a version-1 database', () => {
+  const file = path.join(tmpDir, 'v1-to-v2.db');
   const before = createVersion1Database(file);
-  const db = openDatabase(file);
+  const db = migrateTo(file, 2);
   const rows = db.prepare('SELECT * FROM tasks ORDER BY id').all();
   after(() => db.close());
 
-  test('ends at the latest version', () => {
-    assert.equal(db.pragma('user_version', { simple: true }), SCHEMA_VERSION);
+  test('ends at version 2', () => {
+    assert.equal(db.pragma('user_version', { simple: true }), 2);
   });
 
   test('keeps every existing row and value, including timestamps', () => {
@@ -81,19 +95,50 @@ describe('upgrading a version-1 database', () => {
       assert.equal(r.energy, null, 'energy stays "not set" for old tasks');
     }
   });
+});
 
-  test('the API works on the upgraded data', async () => {
+describe('migration 003: private tasks (resets the old shared tasks)', () => {
+  for (const fromVersion of [1, 2]) {
+    test(`upgrading a version-${fromVersion} database with tasks ends at the latest version with no tasks`, () => {
+      const file = path.join(tmpDir, `v${fromVersion}-to-latest.db`);
+      createVersion1Database(file);
+      migrateTo(file, fromVersion).close();
+
+      const db = openDatabase(file);
+      try {
+        assert.equal(db.pragma('user_version', { simple: true }), SCHEMA_VERSION);
+        assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tasks').get().n, 0, 'shared tasks are deleted');
+        const owner = db.prepare('PRAGMA table_info(tasks)').all().find((c) => c.name === 'ownerId');
+        assert.ok(owner, 'tasks has an ownerId column');
+        assert.equal(owner.notnull, 1);
+      } finally {
+        db.close();
+      }
+    });
+  }
+
+  test('the database rejects a task without an owner', () => {
+    const db = openDatabase(':memory:');
+    const insert = (ownerId) =>
+      db.prepare(`INSERT INTO tasks (ownerId, title, category, scheduledDate, createdAt, updatedAt)
+                  VALUES (?, 'x', 'Study', '2026-10-15', 'now', 'now')`).run(ownerId);
+    assert.throws(() => insert(null));
+    assert.throws(() => insert(''));
+    assert.throws(() => insert('   '));
+    assert.doesNotThrow(() => insert('user_a'));
+    db.close();
+  });
+
+  test('the API works after the reset: ids restart at 1 and new tasks belong to their creator', async () => {
+    const file = path.join(tmpDir, 'reset-api.db');
+    createVersion1Database(file);
     const api = await startTestServer({ db: openDatabase(file) });
     try {
-      const day = (await api.get('/api/tasks/today?today=2026-10-15')).body;
-      assert.deepEqual(day.open.map((t) => t.title), ['Start only', 'Timed 90 min', 'Untimed']);
-      assert.equal(day.completed[0].title, 'Two minutes');
-      assert.equal(day.open[1].isFixed, false);
-      const backlog = (await api.get('/api/tasks/backlog?today=2026-10-15')).body;
-      assert.deepEqual(backlog.tasks.map((t) => t.title), ['Very long block']);
-      const edited = await api.patch(`/api/tasks/${day.open[1].id}`, { priority: 'high', energy: 'deep' });
-      assert.equal(edited.status, 200);
-      assert.equal(edited.body.notes, 'my notes');
+      assert.deepEqual((await api.get('/api/tasks')).body, []);
+      const created = await api.post('/api/tasks?today=2026-10-15', { title: 'Fresh start', category: 'Study' });
+      assert.equal(created.status, 201);
+      assert.equal(created.body.id, 1);
+      assert.equal(api.db.prepare('SELECT ownerId FROM tasks WHERE id = 1').get().ownerId, TEST_USER_ID);
     } finally {
       api.close();
     }

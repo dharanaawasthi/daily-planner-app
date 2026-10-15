@@ -30,6 +30,17 @@ function optionalDateQuery(req, name) {
 export function createTasksRouter(repo) {
   const router = express.Router();
 
+  // Every task belongs to the signed-in user. The owner comes only from the
+  // verified session (req.userId, set by the auth middleware) — never from the
+  // request body or query. A task owned by someone else gets the same 404 as
+  // one that doesn't exist, so ownership is never revealed.
+  router.use((req, res, next) => {
+    if (typeof req.userId !== 'string' || !req.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    next();
+  });
+
   // GET /api/tasks?date=&from=&to=&status=&category=
   router.get('/', (req, res) => {
     const { status, category } = req.query;
@@ -42,7 +53,7 @@ export function createTasksRouter(repo) {
     }
 
     res.json(
-      repo.list({
+      repo.list(req.userId, {
         date: optionalDateQuery(req, 'date'),
         from: optionalDateQuery(req, 'from'),
         to: optionalDateQuery(req, 'to'),
@@ -56,19 +67,19 @@ export function createTasksRouter(repo) {
   // Today's tasks, split into open and completed, each sorted by start time.
   router.get('/today', (req, res) => {
     const date = resolveToday(req);
-    res.json({ date, ...repo.forDay(date) });
+    res.json({ date, ...repo.forDay(req.userId, date) });
   });
 
   // GET /api/tasks/backlog?today=YYYY-MM-DD
   // Open tasks scheduled before today (oldest first).
   router.get('/backlog', (req, res) => {
     const today = resolveToday(req);
-    res.json({ today, tasks: repo.backlog(today) });
+    res.json({ today, tasks: repo.backlog(req.userId, today) });
   });
 
   // GET /api/tasks/:id
   router.get('/:id', (req, res) => {
-    const task = repo.findById(parseId(req));
+    const task = repo.findById(req.userId, parseId(req));
     if (!task) throw notFound();
     res.json(task);
   });
@@ -78,7 +89,7 @@ export function createTasksRouter(repo) {
     const { values, errors } = parseTaskInput(req.body ?? {}, { partial: false });
     if (hasErrors(errors)) throw badRequest('Validation failed', errors);
 
-    const task = repo.create({
+    const task = repo.create(req.userId, {
       ...values,
       scheduledDate: values.scheduledDate ?? resolveToday(req),
     });
@@ -92,7 +103,7 @@ export function createTasksRouter(repo) {
     const { values, errors } = parseTaskInput(req.body ?? {}, { partial: true });
     if (hasErrors(errors)) throw badRequest('Validation failed', errors);
 
-    const task = repo.update(id, values);
+    const task = repo.update(req.userId, id, values);
     if (!task) throw notFound();
     res.json(task);
   });
@@ -111,26 +122,26 @@ export function createTasksRouter(repo) {
       throw badRequest('Validation failed', { date: 'Choose today or a future date' });
     }
 
-    const existing = repo.findById(id);
+    const existing = repo.findById(req.userId, id);
     if (!existing) throw notFound();
     if (existing.status !== 'open') throw conflict(`Only open tasks can be rescheduled (this one is ${existing.status})`);
 
-    res.json(repo.update(id, { scheduledDate: date }));
+    res.json(repo.update(req.userId, id, { scheduledDate: date }));
   });
 
   // POST /api/tasks/:id/dismiss — backlog action "Dismiss"
   router.post('/:id/dismiss', (req, res) => {
     const id = parseId(req);
-    const existing = repo.findById(id);
+    const existing = repo.findById(req.userId, id);
     if (!existing) throw notFound();
     if (existing.status !== 'open') throw conflict(`Only open tasks can be dismissed (this one is ${existing.status})`);
 
-    res.json(repo.update(id, { status: 'dismissed' }));
+    res.json(repo.update(req.userId, id, { status: 'dismissed' }));
   });
 
   // DELETE /api/tasks/:id
   router.delete('/:id', (req, res) => {
-    if (!repo.remove(parseId(req))) throw notFound();
+    if (!repo.remove(req.userId, parseId(req))) throw notFound();
     res.status(204).end();
   });
 

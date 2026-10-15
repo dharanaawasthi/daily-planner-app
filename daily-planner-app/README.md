@@ -50,8 +50,9 @@ npm run dev
 Then open **http://localhost:5173**.
 
 - The API runs on **http://localhost:3001/api**; Vite forwards `/api/*` to it.
-- On first start the database file `server/data/planner.db` is created and filled with
-  sample tasks dated around today. Restarting does **not** re-seed.
+- On first start the database file `server/data/planner.db` is created. Every account
+  starts with an **empty** task list; to load demo tasks into your own account see
+  `npm run seed` below.
 
 ### Sign-in (Clerk)
 
@@ -76,8 +77,27 @@ Every `/api` route, including `/api/health`, requires a verified Clerk session t
 `401 { "error": "Authentication required" }` without one. Handlers receive the Clerk user ID
 as `req.userId`.
 
-> All signed-in users still share the same task list: tasks are not yet stored per user.
 > Never put Clerk's secret key (`sk_...`) in the client.
+
+### Your tasks are private to your account
+
+Each task belongs to the Clerk account that created it, and you only ever see and change
+your own tasks:
+
+- The owner of a task is taken **only** from the verified Clerk session on the server. An
+  `ownerId` sent by the browser (in a body or query string) is ignored, and a task can't be
+  handed to another account.
+- Every list (Today, Backlog, `GET /api/tasks`) shows only the signed-in account's tasks.
+- Every action on a single task — read, edit, complete, reschedule, dismiss, delete — checks
+  ownership in the database query itself. A task that belongs to someone else gets the same
+  `404 { "error": "Task not found" }` as one that doesn't exist, so the API never reveals
+  whether another account's task exists.
+- New accounts start with an empty task list.
+- Switching accounts in the browser clears the previous account's tasks from the screen.
+
+**One-time reset:** before this change all signed-in users shared one task list. Upgrading
+to database version 3 (migration `003_task_owner.sql`, applied automatically on the next
+server start) **deletes all existing tasks** — they had no owner and were test data only.
 
 ### Other commands (run from the project root)
 
@@ -85,8 +105,8 @@ as `req.userId`.
 |---|---|
 | `npm run dev` | API (auto-restarts on change) + React dev server |
 | `npm run dev:server` / `npm run dev:client` | Run just one side |
-| `npm run seed` | **Wipe** the database and re-create the sample tasks relative to today |
-| `npm test` | Run all tests: server (API, planning fields, migrations) and client (form + settings logic) |
+| `npm run seed -- <clerk_user_id>` | **Replace that account's tasks** with the sample tasks relative to today (other accounts are untouched). The ID (`user_…`) is in the Clerk Dashboard → Users |
+| `npm test` | Run all tests: server (API, ownership, planning fields, migrations) and client (form + settings logic) |
 | `npm run test:server` / `npm run test:client` | Run one side's tests |
 | `npm run build` then `npm start` | Production: Express serves the built app and API on http://localhost:3001 |
 
@@ -97,7 +117,6 @@ as `req.userId`.
 | `CLERK_SECRET_KEY` | — (required) | (server) Clerk secret key for verifying session tokens; set in `server/.env` |
 | `PORT` | `3001` | API port |
 | `DB_PATH` | `server/data/planner.db` | SQLite file location |
-| `SEED_ON_EMPTY` | `true` | Set to `false` to start with an empty database |
 | `API_PORT` | `3001` | (client) where Vite proxies `/api` in development |
 
 ### Troubleshooting
@@ -107,7 +126,8 @@ as `req.userId`.
   unsupported Node version: switch to the current LTS (e.g. with `nvm`) and run
   `npm install` again. Delete `node_modules` first if you changed Node versions.
 - **Port in use** — `PORT=4000 API_PORT=4000 npm run dev` (macOS/Linux).
-- **Start over** — `npm run seed`, or stop the server and delete `server/data/planner.db`.
+- **Start over** — `npm run seed -- <clerk_user_id>` resets one account to the sample tasks;
+  to wipe everything, stop the server and delete `server/data/planner.db`.
 
 ---
 
@@ -120,14 +140,14 @@ daily-planner/
 │   ├── package.json
 │   ├── .env.example          # CLERK_SECRET_KEY= (copy to .env, git-ignored)
 │   ├── data/                 # planner.db lives here (git-ignored)
-│   ├── scripts/seed.js       # npm run seed — reset to sample data
+│   ├── scripts/seed.js       # npm run seed -- <user> — reset one account to sample data
 │   ├── src/
-│   │   ├── index.js          # loads server/.env, starts the server, seeds an empty DB
+│   │   ├── index.js          # loads server/.env, starts the server
 │   │   ├── app.js            # Express app: JSON, routes, errors, static client
 │   │   ├── db/
 │   │   │   ├── migrations/   # 001_initial.sql, 002_planning_fields.sql, …
 │   │   │   ├── connection.js # opens SQLite, applies pending migrations
-│   │   │   ├── taskRepository.js  # all task SQL
+│   │   │   ├── taskRepository.js  # all task SQL, every query scoped to one owner
 │   │   │   └── seed.js       # sample tasks relative to today
 │   │   ├── routes/tasks.js   # /api/tasks endpoints
 │   │   ├── middleware/auth.js # Clerk session check on /api → req.userId or 401
@@ -136,8 +156,9 @@ daily-planner/
 │       ├── api.test.js             # end-to-end API tests (node:test)
 │       ├── auth.test.js            # /api requires a Clerk session (401 otherwise)
 │       ├── planning-fields.test.js # new planning fields: defaults, validation, rules
-│       ├── migrations.test.js      # upgrading a v1 database keeps all data
-│       └── helpers.js              # shared test server
+│       ├── ownership.test.js       # two users: neither can see or change the other's tasks
+│       ├── migrations.test.js      # v1 → v2 keeps data; v3 resets shared tasks
+│       └── helpers.js              # shared test server, fake signed-in users
 └── client/
     ├── package.json
     ├── vite.config.js        # dev proxy /api -> :3001
@@ -180,6 +201,7 @@ One table, `tasks`:
 | Field | Type | Notes |
 |---|---|---|
 | `id` | integer | auto-increment |
+| `ownerId` | text | required; the Clerk user ID of the account that created the task. Set by the server only, never returned by the API |
 | `title` | text | required, 1–200 chars |
 | `category` | text | `Study` · `Gym` · `Career` · `Personal` (case-insensitive on input) |
 | `scheduledDate` | text `YYYY-MM-DD` | required; defaults to today on create |
@@ -199,10 +221,12 @@ One table, `tasks`:
 
 The schema is versioned with SQLite's `user_version`. On start the server applies any
 migration in `server/src/db/migrations/` newer than the database, each in its own
-transaction (a failure leaves the database at its previous version). Existing data is kept:
-upgrading to version 2 adds the planning fields, sets `durationMinutes` from each task's
-existing start–end block (otherwise 60), and leaves `energy` as `null` (not set) for old
-tasks. A database created by a newer app version is refused rather than modified.
+transaction (a failure leaves the database at its previous version). Upgrading to
+version 2 keeps existing data: it adds the planning fields, sets `durationMinutes` from
+each task's existing start–end block (otherwise 60), and leaves `energy` as `null` (not
+set) for old tasks. Upgrading to version 3 adds `ownerId` and **deletes all existing
+tasks** (shared test data with no owner; see *Your tasks are private to your account*).
+A database created by a newer app version is refused rather than modified.
 
 ### Planning settings (browser only)
 
@@ -223,7 +247,8 @@ Without it, the server's local date is used.
 ## API
 
 Every route requires a Clerk session token (`Authorization: Bearer <token>`); without a
-valid one the response is `401 { "error": "Authentication required" }`.
+valid one the response is `401 { "error": "Authentication required" }`. Task routes only
+see the signed-in account's tasks; anyone else's task answers `404` like a missing one.
 
 All responses are JSON. Errors look like
 `{ "error": "Validation failed", "details": { "endTime": "End time must be after the start time" } }`.
@@ -264,7 +289,7 @@ curl -X POST http://localhost:3001/api/tasks \
 
 ## Sample data
 
-`npm run seed` (and the first start) creates 19 tasks dated relative to today:
+`npm run seed -- <clerk_user_id>` gives that account 19 tasks dated relative to today:
 8 for today (2 already completed, 2 without a time), 4 open tasks from earlier days
 that appear in the backlog, 3 earlier tasks that are completed or dismissed and so
 stay out of the backlog, and 4 upcoming tasks.

@@ -2,7 +2,7 @@ import { addDays, localToday } from '../lib/dates.js';
 import { createTaskRepository } from './taskRepository.js';
 
 /**
- * Sample tasks, positioned relative to `today` so a fresh install always shows:
+ * Sample tasks, positioned relative to `today` so a seeded account always shows:
  *  - a Today list with timed and untimed tasks, plus a couple already completed
  *  - a Backlog of open tasks from earlier days
  *  - past tasks that are completed or dismissed (and so NOT in the backlog)
@@ -43,25 +43,28 @@ export function sampleTasks(today) {
   ];
 }
 
-/** Insert the sample tasks (does not clear existing data). Returns the count. */
-export function seedSampleTasks(db, today = localToday()) {
+/**
+ * Give one user the sample tasks (does not clear their existing tasks).
+ * Returns the count.
+ */
+export function seedSampleTasks(db, ownerId, today = localToday()) {
   const repo = createTaskRepository(db);
   const tasks = sampleTasks(today);
   repo.transaction(() => {
-    for (const task of tasks) repo.create(task);
+    for (const task of tasks) repo.create(ownerId, task);
   });
   return tasks.length;
 }
 
-/** Seed only when the database has no tasks yet (first run). */
-export function seedIfEmpty(db, today = localToday()) {
+/**
+ * Replace one user's tasks with the sample tasks. Other users' tasks are
+ * untouched.
+ */
+export function resetWithSampleTasks(db, ownerId, today = localToday()) {
   const repo = createTaskRepository(db);
-  if (repo.count() > 0) return 0;
-  return seedSampleTasks(db, today);
-}
-
-/** Delete every task and re-seed from scratch. */
-export function resetWithSampleTasks(db, today = localToday()) {
-  db.exec(`DELETE FROM tasks; DELETE FROM sqlite_sequence WHERE name = 'tasks';`);
-  return seedSampleTasks(db, today);
+  return repo.transaction(() => {
+    repo.count(ownerId); // validates ownerId before anything is deleted
+    db.prepare('DELETE FROM tasks WHERE ownerId = ?').run(ownerId);
+    return seedSampleTasks(db, ownerId, today);
+  });
 }

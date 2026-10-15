@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { resetWithSampleTasks } from '../src/db/seed.js';
-import { startTestServer } from './helpers.js';
+import { TEST_USER_ID, startTestServer } from './helpers.js';
 
 const TODAY = '2026-10-15';
 let api;
@@ -11,7 +11,7 @@ before(async () => {
   api = await startTestServer();
 });
 after(() => api.close());
-beforeEach(() => resetWithSampleTasks(api.db, TODAY));
+beforeEach(() => resetWithSampleTasks(api.db, TEST_USER_ID, TODAY));
 
 const create = (body) => api.post(`/api/tasks?today=${TODAY}`, body);
 const findByTitle = async (title) => (await api.get('/api/tasks')).body.find((t) => t.title === title);
@@ -152,8 +152,8 @@ describe('seed data and database constraints', () => {
 
   test('the database itself rejects out-of-range values', () => {
     const insert = (cols) =>
-      api.db.prepare(`INSERT INTO tasks (title, category, scheduledDate, createdAt, updatedAt, ${Object.keys(cols).join(', ')})
-                      VALUES ('x', 'Study', '2026-10-01', 'now', 'now', ${Object.keys(cols).map(() => '?').join(', ')})`)
+      api.db.prepare(`INSERT INTO tasks (ownerId, title, category, scheduledDate, createdAt, updatedAt, ${Object.keys(cols).join(', ')})
+                      VALUES ('user_test', 'x', 'Study', '2026-10-01', 'now', 'now', ${Object.keys(cols).map(() => '?').join(', ')})`)
         .run(...Object.values(cols));
     assert.throws(() => insert({ durationMinutes: 1000 }));
     assert.throws(() => insert({ durationMinutes: 30.5 }));

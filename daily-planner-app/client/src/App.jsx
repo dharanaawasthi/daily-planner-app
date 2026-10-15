@@ -61,8 +61,13 @@ function DayProgress({ done, total }) {
  * Authentication gate. Signed-out visitors see Clerk's sign-in; signed-in
  * users see the planner exactly as before. The planner only mounts after
  * sign-in, so no task data is requested for signed-out visitors.
+ *
+ * Tasks are private per account. Keying the planner by user ID remounts it
+ * (dropping all task state) whenever the signed-in account changes, so one
+ * account's tasks are never shown while another's load.
  */
 export default function App() {
+  const { userId } = useAuth();
   return (
     <>
       <ClerkLoading>
@@ -84,7 +89,7 @@ export default function App() {
           </main>
         </Show>
         <Show when="signed-in">
-          <Planner />
+          <Planner key={userId} />
         </Show>
       </ClerkLoaded>
 
