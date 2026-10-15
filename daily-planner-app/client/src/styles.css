@@ -140,6 +140,42 @@ h1 {
   }
 }
 
+/* ─── Sign-in (Clerk) ────────────────────────────────────────────────── */
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 32px 16px;
+}
+.auth-intro { text-align: center; }
+.auth-intro h1 { margin: 0; }
+.auth-intro p, .auth-status { margin-top: 4px; color: var(--muted); }
+.auth-card {
+  max-width: 440px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+.auth-card h1 { margin: 0 0 8px; font-size: 1.25rem; }
+.auth-card p + p, .auth-card pre + p { margin-top: 10px; }
+.setup-card pre {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+.setup-card code { font-size: 0.9em; }
+
+/* Clerk account button in the header */
+.user-button { display: inline-flex; align-items: center; min-width: 32px; min-height: 32px; margin-left: 4px; }
+
 /* ─── Cards ───────────────────────────────────────────────────────────── */
 .card {
   background: var(--surface);

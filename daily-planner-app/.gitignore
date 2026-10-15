@@ -4,7 +4,8 @@ server/data/*.db
 server/data/*.db-wal
 server/data/*.db-shm
 .env
+# Local environment files hold keys — never commit them (e.g. client/.env.local)
+.env.local
+.env.*.local
 .DS_Store
 *.log
-
-.DS_Store

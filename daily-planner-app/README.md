@@ -53,6 +53,22 @@ Then open **http://localhost:5173**.
 - On first start the database file `server/data/planner.db` is created and filled with
   sample tasks dated around today. Restarting does **not** re-seed.
 
+### Sign-in (Clerk)
+
+The React app requires sign-in with [Clerk](https://clerk.com) before the planner is shown.
+
+1. Create an application in the Clerk Dashboard and copy its **publishable key**
+   (API keys → starts with `pk_test_` or `pk_live_`).
+2. Put it in `client/.env.local` (Git ignores this file; `client/.env.example` shows the format):
+   ```
+   VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+   ```
+3. Restart `npm run dev`. Until a real key is set, the app shows a setup message instead.
+
+> Only the client is protected so far: the Express API does not check sign-in yet, so
+> anyone who can reach port 3001 can still read and change tasks, and all signed-in users
+> share the same task list. Never put Clerk's secret key (`sk_...`) in the client.
+
 ### Other commands (run from the project root)
 
 | Command | What it does |

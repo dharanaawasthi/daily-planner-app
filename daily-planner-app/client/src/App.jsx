@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { ClerkFailed, ClerkLoaded, ClerkLoading, Show, SignIn, UserButton } from '@clerk/react';
 import BacklogItem from './components/BacklogItem.jsx';
 import CompletedSection from './components/CompletedSection.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
@@ -55,7 +56,51 @@ function DayProgress({ done, total }) {
   );
 }
 
+/**
+ * Authentication gate. Signed-out visitors see Clerk's sign-in; signed-in
+ * users see the planner exactly as before. The planner only mounts after
+ * sign-in, so no task data is requested for signed-out visitors.
+ */
 export default function App() {
+  return (
+    <>
+      <ClerkLoading>
+        <main className="auth-screen">
+          <p className="auth-status" role="status">
+            Loading…
+          </p>
+        </main>
+      </ClerkLoading>
+
+      <ClerkLoaded>
+        <Show when="signed-out">
+          <main className="auth-screen">
+            <div className="auth-intro">
+              <h1>Daily Planner</h1>
+              <p>Sign in to see your tasks.</p>
+            </div>
+            <SignIn />
+          </main>
+        </Show>
+        <Show when="signed-in">
+          <Planner />
+        </Show>
+      </ClerkLoaded>
+
+      <ClerkFailed>
+        <main className="auth-screen">
+          <div className="auth-card" role="alert">
+            <h1>Couldn’t load sign-in</h1>
+            <p>Check your internet connection and that the Clerk publishable key in client/.env.local is correct, then reload.</p>
+          </div>
+        </main>
+      </ClerkFailed>
+    </>
+  );
+}
+
+/** The planner itself (unchanged), shown only to signed-in users. */
+function Planner() {
   const { today, data, load, retry, isPending, notice, notify, clearNotice, actions } = usePlanner();
   const planning = usePlanningSettings(today);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -176,6 +221,10 @@ export default function App() {
               <PlusIcon />
               Add task
             </button>
+            {/* Clerk's account menu: profile, manage account, sign out */}
+            <span className="user-button">
+              <UserButton />
+            </span>
           </div>
         </div>
       </header>

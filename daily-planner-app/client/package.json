@@ -10,8 +10,9 @@
     "test": "node --test"
   },
   "dependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "@clerk/react": "^6.17.8",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",
