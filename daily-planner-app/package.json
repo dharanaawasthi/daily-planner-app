@@ -1,0 +1,27 @@
+{
+  "name": "daily-planner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal daily task planner — React + Express + SQLite",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "seed": "npm run seed -w server",
+    "test": "npm test --workspaces",
+    "test:server": "npm test -w server",
+    "test:client": "npm test -w client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
