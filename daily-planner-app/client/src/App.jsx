@@ -15,6 +15,8 @@ import { usePlanner } from './hooks/usePlanner.js';
 import { usePlanningSettings } from './hooks/usePlanningSettings.js';
 import { formatLongDate, formatShortDate, formatTime } from './lib/dates.js';
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const isTyping = (el) =>
   el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
 
