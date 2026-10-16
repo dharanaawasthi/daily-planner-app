@@ -11,6 +11,7 @@
 // (Authorization: Bearer …); the API answers 401 without one.
 
 const UNREACHABLE = 'Couldn’t reach the server. Check that it’s running and try again.';
+const API_URL = import.meta.env.VITE_API_URL;
 
 let getToken = async () => null;
 
@@ -29,7 +30,8 @@ async function request(path, { method = 'GET', body } = {}) {
 
   let res;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${API_URL}/api${path}`, {
+  
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
