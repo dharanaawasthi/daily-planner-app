@@ -1,6 +1,6 @@
 {
-  "name": "Daily Planner",
-  "short_name": "Planner",
+  "name": "Todzy",
+  "short_name": "Todzy",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#142B4A",
