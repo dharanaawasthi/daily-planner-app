@@ -96,11 +96,19 @@
   --danger-soft: #fee2e2;
   --danger-border: #fecaca;
 
-  /* Category colors (mirrored in src/lib/categories.js) — chips & dots only */
+  /* Category colours (src/lib/categories.js returns these tokens) — dots,
+     chips and the category picker only. Dots ≥3:1 on cards; text ≥4.5:1 on tints. */
   --study: #2563eb;
-  --gym: #16a34a;
+  --study-tint: #eff4ff;
+  --gym: #15803d;
+  --gym-tint: #ecfdf3;
   --career: #7c3aed;
-  --personal: #ea580c;
+  --career-tint: #f4f0ff;
+  --personal: #c2410c;
+  --personal-tint: #fff4ec;
+
+  /* App shell: bottom tab bar height on phones (safe area added separately) */
+  --tabbar-h: 60px;
 
   --radius-lg: 16px;
   --radius: 12px;
@@ -182,6 +190,15 @@
     --danger-soft: #4a2531;
     --danger-border: #7f2d3a;
 
+    --study: #60a5fa;
+    --study-tint: #1d3356;
+    --gym: #4ade80;
+    --gym-tint: #183a2c;
+    --career: #a78bfa;
+    --career-tint: #2b2752;
+    --personal: #fb923c;
+    --personal-tint: #3d2b20;
+
     --shadow-card: 0 1px 2px rgb(0 0 0 / 0.25), 0 4px 14px rgb(0 0 0 / 0.2);
     --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.3), 0 8px 20px rgb(0 0 0 / 0.28);
     --shadow-btn: 0 1px 2px rgb(0 0 0 / 0.3);
@@ -233,57 +250,153 @@ svg { flex: none; }
   margin: 0 auto;
   padding-inline: 20px;
 }
+/* Compact header: name + date on one line */
 .app-header-inner {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-block: 28px 20px;
+  min-height: 56px;
+  padding-block: 8px;
 }
+.app-brand { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-width: 0; }
+.header-chips { display: flex; align-items: center; gap: 8px; }
 .shell { padding-block: 0 96px; }
 
-/* Navy header band (navigation) */
+/* Navy header band */
 .app-header {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   background: var(--header-bg);
   border-bottom: 1px solid var(--header-edge);
   color: var(--on-header);
 }
-.app-header .eyebrow,
-.app-header .planning-summary { color: var(--on-header-soft); }
+.app-header .eyebrow { color: var(--on-header-soft); }
 .app-header :focus-visible { outline-color: var(--on-header); }
-.app-header .btn-ghost {
-  background: transparent;
-  border-color: var(--header-line);
-  color: var(--on-header);
-}
-.app-header .btn-ghost:hover:not(:disabled) { background: var(--header-hover); }
 .shell:focus { outline: none; }
 
 .eyebrow { color: var(--muted); font-size: 0.875rem; }
-.planning-summary { margin-top: 4px; color: var(--muted); font-size: 0.875rem; }
-.header-actions { display: flex; align-items: center; gap: 8px; }
+.planning-summary { color: var(--muted); font-size: 0.875rem; }
 h1 {
   margin: 2px 0 0;
   font-size: 1.75rem;
   font-weight: 700;
   letter-spacing: -0.025em;
 }
+.app-header h1 { margin: 0; font-size: 1.35rem; }
 
-/* Two-column dashboard: Today ≈68%, Backlog ≈32% above 900px.
-   Source order (Today, then Backlog) is the stacked mobile order. */
+/* Dashboard: Today and backlog stacked (phones, and 901–1199px where the
+   sidebar leaves too little room); side by side ≈68% / 32% from 1200px.
+   Source order (Today, then backlog) is the stacked order. */
 .dashboard {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 20px;
 }
-@media (min-width: 901px) {
+@media (min-width: 1200px) {
   .dashboard {
     grid-template-columns: minmax(0, 68fr) minmax(0, 32fr);
     gap: 24px;
     align-items: start;
   }
 }
+
+/* ─── Section navigation ──────────────────────────────────────────────── */
+/* Phones (<901px): fixed bottom tab bar. Desktop: slim left sidebar. */
+.section-nav ul { display: grid; list-style: none; margin: 0; padding: 0; }
+.section-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.section-nav-item:hover { background: var(--surface-muted); color: var(--text); }
+/* Active: navy text, bold label and a filled pill — not colour alone. */
+.section-nav-item[aria-current='page'] { color: var(--on-selected); font-weight: 750; }
+.section-nav-item[aria-current='page'] svg {
+  border-radius: 999px;
+  background: var(--selected-bg);
+  box-shadow: 0 0 0 4px var(--selected-bg);
+}
+
+@media (max-width: 900px) {
+  .section-nav {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 15;
+    padding: 4px 8px env(safe-area-inset-bottom);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 10px rgb(20 43 74 / 0.06);
+  }
+  .section-nav ul { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+  .section-nav-item { min-height: calc(var(--tabbar-h) - 8px); }
+  /* Room for the tab bar and the round add button above it */
+  .shell { padding-bottom: calc(var(--tabbar-h) + 96px + env(safe-area-inset-bottom)); }
+  .now-toolbar { display: none; }
+}
+
+@media (min-width: 901px) {
+  .app-header-inner,
+  .app-frame { max-width: 1320px; }
+  .app-frame {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    margin: 0 auto;
+    padding-left: 12px;
+  }
+  .section-nav ul { position: sticky; top: 16px; gap: 6px; }
+  .section-nav-item { min-height: 64px; }
+  .shell { width: 100%; }
+  .now-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+}
+
+/* Round add button (phones): just above the tab bar, in thumb reach */
+.fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom));
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 2px solid var(--selected-border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--on-selected);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  transition: transform 180ms ease, opacity 180ms ease, visibility 0s;
+}
+.fab:hover { background: var(--selected-bg); }
+.fab:focus-visible { border-radius: 50%; outline-offset: 3px; }
+/* Hidden (and out of the Tab order) while Quick Add is on screen */
+.fab.is-tucked {
+  transform: translateY(40%);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 180ms ease, opacity 180ms ease, visibility 0s 180ms;
+}
+/* Desktop has the Add task button at the top of Now instead. */
+@media (min-width: 901px) {
+  .fab { display: none; }
+}
+
+/* ─── Me ──────────────────────────────────────────────────────────────── */
+.me-view { display: grid; gap: 16px; max-width: 640px; }
+.section-title { margin: 0; font-size: 1.35rem; font-weight: 700; letter-spacing: -0.015em; }
+.section-title:focus { outline: none; }
+.me-card { display: grid; justify-items: start; gap: 10px; padding: 16px 20px 18px; }
+.me-card-title { margin: 0; font-size: 1rem; font-weight: 680; }
+.me-note { color: var(--muted); font-size: 0.875rem; }
 
 /* ─── Sign-in (Clerk) ────────────────────────────────────────────────── */
 .auth-screen {
@@ -318,7 +431,7 @@ h1 {
 }
 .setup-card code { font-size: 0.9em; }
 
-/* Clerk account button in the header */
+/* Clerk account button (Me section) */
 .user-button { display: inline-flex; align-items: center; min-width: 32px; min-height: 32px; margin-left: 4px; }
 
 /* ─── Cards ───────────────────────────────────────────────────────────── */
@@ -427,9 +540,16 @@ h1 {
 .btn-quiet { background: transparent; color: var(--muted); }
 .btn-quiet:hover:not(:disabled) { background: var(--surface-muted); color: var(--text); }
 
-/* Soft primary: secondary coral actions (e.g. backlog "Schedule today") */
-.btn-primary-soft { background: var(--primary-tint); color: var(--on-primary-tint); }
-.btn-primary-soft:hover:not(:disabled) { background: var(--primary-tint-hover); }
+/* Navy secondary: important but not the screen's main action (Add task,
+   Quick Add "Add", backlog "Schedule today" / "Move"). Never coral. */
+.btn-secondary,
+.btn-primary-soft {
+  background: var(--surface);
+  border: 1.5px solid var(--selected-border);
+  color: var(--on-selected);
+}
+.btn-secondary:hover:not(:disabled),
+.btn-primary-soft:hover:not(:disabled) { background: var(--selected-bg); }
 
 /* Red is reserved for deleting: a red icon at rest, fully red on hover/focus. */
 .btn-delete svg { color: var(--danger); }
@@ -489,11 +609,10 @@ h1 {
 
 .task {
   display: grid;
-  grid-template-columns: auto 92px minmax(0, 1fr) auto;
-  grid-template-areas: 'check time body actions';
-  align-items: start;
-  column-gap: 14px;
-  padding: 14px 14px 14px 16px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 4px;
+  padding: 4px 6px 4px 6px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -503,13 +622,12 @@ h1 {
 .task:hover { box-shadow: var(--shadow-card-hover); }
 .task.is-busy { opacity: 0.6; }
 
+/* 44px hit area around the checkbox: completing is one tap */
 .check-hit {
-  grid-area: check;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  margin: -5px 0 0 -5px;
+  width: 44px;
+  height: 44px;
   cursor: pointer;
 }
 .check {
@@ -539,11 +657,30 @@ h1 {
 .check:checked::after { transform: translateY(-1px) rotate(-45deg) scale(1); }
 .check:disabled { cursor: wait; }
 
+/* The rest of the row is one button that opens the task sheet. */
+.task-open {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  grid-template-areas: 'time title dot';
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px 8px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.task-open:focus-visible { border-radius: var(--radius-sm); outline-offset: 0; }
+
 .task-time {
   grid-area: time;
   display: flex;
-  flex-direction: column;
-  padding-top: 1px;
+  flex-wrap: wrap;
+  column-gap: 4px;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-soft);
@@ -551,23 +688,12 @@ h1 {
 }
 .time-end, .time-anytime { color: var(--muted); }
 
-.task-body { grid-area: body; min-width: 0; }
 .task-title { font-weight: 560; overflow-wrap: anywhere; }
-.task-notes {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 0.875rem;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  white-space: pre-line;
-}
+.task-open .task-title { grid-area: title; min-width: 0; }
+.task-dot { grid-area: dot; width: 10px; height: 10px; border-radius: 50%; background: var(--cat); }
 .task-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 
-.task-actions { grid-area: actions; display: flex; gap: 2px; margin-top: -5px; }
-
-/* Completed: pale green row, green check, "Done" tag, struck-through title. */
+/* Completed: pale green row, green check, struck-through title. */
 .task.is-done { background: var(--success-tint); }
 .task.is-done .task-title {
   color: var(--muted);
@@ -575,22 +701,21 @@ h1 {
   text-decoration: line-through;
   text-decoration-thickness: 1.5px;
 }
-.task.is-done .task-time,
-.task.is-done .task-notes { color: var(--muted); }
-.task.is-done .chip { background: transparent; }
-.done-tag {
-  display: inline-flex;
-  align-items: center;
+.task.is-done .task-time { color: var(--muted); }
+
+/* ─── Task sheet ──────────────────────────────────────────────────────── */
+.sheet-title { overflow-wrap: anywhere; }
+.sheet-body { padding-top: 4px; }
+.sheet-when {
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--success-soft);
-  color: var(--success-text);
-  font-size: 0.75rem;
-  font-weight: 650;
-  line-height: 1.5;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
 }
-.done-tag::before { content: '✓'; font-weight: 800; }
+.sheet-done { color: var(--success-text); font-weight: 650; }
+.sheet-notes { margin-top: 14px; color: var(--text-soft); white-space: pre-line; overflow-wrap: anywhere; }
+.sheet-delete { margin-right: auto; }
 
 /* ─── Planning details on rows ────────────────────────────────────────── */
 .task-meta { display: contents; }
@@ -707,6 +832,10 @@ h1 {
 /* ─── Backlog card ────────────────────────────────────────────────────── */
 /* Warm neutral: the backlog is a calm place to review, not an alarm. */
 .backlog-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+/* Phones: collapsed "From previous days" section */
+.backlog-toggle-heading { margin: 0; font-size: 1rem; }
+.backlog-collapsible .collapse-btn { flex-wrap: wrap; padding: 14px 16px; }
+.backlog-collapsible .badge { margin-left: auto; }
 
 .attention-label {
   display: inline-flex;
@@ -852,6 +981,10 @@ h1 {
 .toast-icon { color: var(--success-on-raised); }
 .toast-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+/* Phones: above the tab bar and clear of the round add button */
+@media (max-width: 900px) {
+  .toast { bottom: calc(var(--tabbar-h) + 80px + env(safe-area-inset-bottom)); }
+}
 
 /* ─── Modal (native <dialog>) ─────────────────────────────────────────── */
 .modal {
@@ -1121,49 +1254,21 @@ fieldset[aria-invalid='true'] .category-option { border-color: var(--danger); }
 /* ─── Tablet & mobile ─────────────────────────────────────────────────── */
 @media (max-width: 600px) {
   .app-header { margin-bottom: 16px; }
-  .app-header-inner { padding-block: 20px 16px; align-items: flex-start; flex-wrap: wrap; }
-  .settings-btn { min-height: 36px; padding: 0 12px; font-size: 0.85rem; }
   .choice-options { grid-template-columns: repeat(3, 1fr); }
   h1 { font-size: 1.5rem; }
   .shell, .app-header-inner { padding-inline: 16px; }
 
-  /* Floating add button within thumb reach */
-  .add-btn {
-    position: fixed;
-    right: 16px;
-    bottom: calc(16px + env(safe-area-inset-bottom));
-    z-index: 15;
-    min-height: 52px;
-    padding: 0 19px; /* 1px less to absorb the thicker border; same overall size */
-    border: 2px solid var(--on-primary); /* visible edge against the page */
-    border-radius: 999px;
-    box-shadow: var(--shadow-lg);
-    transition: transform 180ms ease, opacity 180ms ease, visibility 0s;
-  }
-  /* Hidden (and out of the Tab order) while Quick Add is on screen */
-  .add-btn.is-tucked {
-    transform: translateY(140%);
-    opacity: 0;
-    visibility: hidden;
-    transition: transform 180ms ease, opacity 180ms ease, visibility 0s 180ms;
-  }
-  .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
-
   .card-header { padding: 16px 16px 12px; }
   .card-block { padding: 0 16px 14px; }
 
-  /* Task row: time above title, actions on their own line */
-  .task {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas:
-      'check time'
-      'check body'
-      'check actions';
-    padding: 12px 12px 10px 12px;
+  /* Task row: time above title */
+  .task-open {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'time dot' 'title dot';
+    row-gap: 1px;
   }
   .task-list, .backlog-list { padding: 0 12px 12px; gap: 8px; }
-  .task-time { flex-direction: row; gap: 4px; padding-top: 0; font-size: 0.8rem; }
-  .task-actions { margin: 8px 0 0 -8px; }
+  .task-time { font-size: 0.8rem; }
 
   .backlog-item { padding: 14px; }
   /* Schedule today full width; Pick date + Dismiss share the next row */

@@ -161,7 +161,7 @@ export default function QuickAdd({ today, onAdd, onAddDetails }) {
           />
         </div>
 
-        <button type="submit" className="btn btn-primary btn-sm qa-add" disabled={saving}>
+        <button type="submit" className="btn btn-secondary btn-sm qa-add" disabled={saving}>
           {saving ? 'Adding…' : 'Add'}
         </button>
         <button type="button" className="btn btn-ghost btn-sm qa-details" onClick={openDetails}>

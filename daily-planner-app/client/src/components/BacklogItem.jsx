@@ -72,7 +72,7 @@ export default function BacklogItem({ task, today, busy, onScheduleToday, onResc
             autoFocus
           />
           <div className="date-picker-actions">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+            <button type="submit" className="btn btn-secondary btn-sm" disabled={busy}>
               Move
             </button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPicking(false)}>

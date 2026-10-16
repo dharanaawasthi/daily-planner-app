@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
+import { categoryStyle } from '../lib/categories.js';
 import { formatTime } from '../lib/dates.js';
-import CategoryChip from './CategoryChip.jsx';
-import TaskMeta from './TaskMeta.jsx';
-import { PencilIcon, TrashIcon } from './icons.jsx';
 
 export function TimeRange({ task }) {
   if (!task.startTime) return <span className="time-anytime">Anytime</span>;
@@ -15,13 +13,15 @@ export function TimeRange({ task }) {
 }
 
 /**
- * One row in Today or Completed: checkbox, time, title/notes, Edit, Delete.
- * Completed rows are marked by a checked box with a check icon, a
- * strikethrough title and a "Done" tag — never by color alone.
+ * One row in Today or Completed: checkbox, then one button with time, title
+ * and category dot. The button opens the task sheet (details, Edit, Delete).
+ * Completed rows are marked by a checked box with a check icon and a
+ * strikethrough title — never by color alone.
  */
-export default function TaskItem({ task, today, busy, onToggle, onEdit, onDelete }) {
+export default function TaskItem({ task, busy, onToggle, onOpen }) {
   const done = task.status === 'completed';
   const titleId = `task-${task.id}-title`;
+  const cat = categoryStyle(task.category);
 
   // Show the click immediately while the request runs. When it finishes the
   // row re-renders from server data (and moves list), or reverts on failure.
@@ -53,44 +53,19 @@ export default function TaskItem({ task, today, busy, onToggle, onEdit, onDelete
         </span>
       </label>
 
-      <div className="task-time">
-        <TimeRange task={task} />
-      </div>
-
-      <div className="task-body">
-        <p id={titleId} className="task-title">
+      <button type="button" className="task-open" aria-haspopup="dialog" onClick={() => onOpen(task)}>
+        <span className="task-time">
+          <TimeRange task={task} />
+        </span>
+        <span id={titleId} className="task-title">
           {task.title}
-        </p>
-        {task.notes && <p className="task-notes">{task.notes}</p>}
-        <p className="task-tags">
-          <CategoryChip category={task.category} />
-          {done && <span className="done-tag">Done</span>}
-          <TaskMeta task={task} today={today} />
-        </p>
-      </div>
-
-      <div className="task-actions">
-        <button
-          type="button"
-          className="btn btn-quiet btn-xs"
-          onClick={() => onEdit(task)}
-          disabled={busy}
-          aria-label={`Edit “${task.title}”`}
-        >
-          <PencilIcon width={15} height={15} />
-          Edit
-        </button>
-        <button
-          type="button"
-          className="btn btn-quiet btn-xs btn-delete"
-          onClick={() => onDelete(task)}
-          disabled={busy}
-          aria-label={`Delete “${task.title}”`}
-        >
-          <TrashIcon width={15} height={15} />
-          Delete
-        </button>
-      </div>
+        </span>
+        <span className="task-dot" style={{ '--cat': cat.color }} aria-hidden="true" />
+        <span className="visually-hidden">
+          , {cat.label}
+          {done && ', done'}. Open details
+        </span>
+      </button>
     </li>
   );
 }
