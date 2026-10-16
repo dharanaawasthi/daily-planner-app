@@ -1,14 +1,24 @@
 /* ─── Tokens ──────────────────────────────────────────────────────────────
-   Brand palette (use the role variables below, not raw hex, in rules):
-   - Cream #FFF8F3  page background
-   - Navy  #142B4A  header/navigation, main text, focus ring, text on coral/amber
-   - Coral #FF6B4A  primary actions (Add task, Save, Schedule today) — always
-                    with NAVY text (white on coral fails contrast)
-   - Amber #FFB547  selected/active states, priority tags, progress — only as a
-                    FILL behind navy text/icons, never as text or thin borders
-   - White #FFFFFF  cards
-   Other roles: green = completion (checkbox, Done tag); red = delete/errors.
-   Category colors appear ONLY as small chip dots and in the category picker.
+   One colour, one job — so the eye goes straight to what matters, and
+   nothing missed is ever shown as danger or guilt.
+   Brand palette: cream #FFF8F3, navy #142B4A, coral #FF6B4A, amber #FFB547.
+   Rules use the ROLE variables below, never raw hex (raw hex lives in :root).
+
+   - Coral   = the ONE main action on a screen (.btn-primary), with navy/dark
+               text on it (white on coral fails contrast).
+   - Amber   = rewards only (Todzy points, celebrations): --reward*.
+   - Green   = progress and completion (progress bar, checkbox, Done tag).
+   - Navy    = text, secondary buttons, and selected/active states
+               (navy outline + subtle navy fill: --selected*).
+   - Warm neutral = the backlog card and its badges. Missed/overdue items use
+               the normal muted text colour — never orange or red.
+   - Red     = delete and errors only.
+   - Rose    = Love tokens: --love, --love-tint.
+   Category colours appear ONLY as small chip dots and in the category picker.
+
+   Dark mode follows the device setting (prefers-color-scheme): deep navy
+   page, slightly lighter navy cards, warm off-white text; every role keeps
+   its job. Text ≥4.5:1, UI components/borders ≥3:1 in both themes.
    Run an automated accessibility audit before claiming WCAG conformance.
    ──────────────────────────────────────────────────────────────────────── */
 :root {
@@ -28,36 +38,59 @@
   --border: #ece3da;
   --border-strong: #8f857b;  /* ≥3:1 on white/cream so input outlines are visible */
   --control-border: #6b7a90; /* darker outline so checkboxes stand out on white */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234D6080' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
+  /* Coral: the one main action */
   --primary: var(--coral);
   --primary-hover: #ff8266;  /* lighter, so navy text keeps its contrast */
   --on-primary: var(--navy);
   --primary-tint: #ffede8;
   --primary-tint-hover: #ffdcd3;
+  --on-primary-tint: var(--navy);
 
-  --accent: var(--amber);
-  --on-accent: var(--navy);
-  --accent-tint: #fff1d9;
+  /* Amber: rewards only */
+  --reward: var(--amber);
+  --on-reward: var(--navy);
+  --reward-tint: #fff1d9;
+
+  /* Navy: selected / active states */
+  --selected-border: var(--navy);
+  --selected-bg: #e6ecf4;
+  --on-selected: var(--navy);
+  --switch-on: var(--navy);
+  --switch-knob-on: var(--white);
+
+  /* Rose: Love tokens */
+  --love: #b83a62;
+  --love-tint: #fff0f4;
 
   --focus: var(--navy);
   --focus-glow: rgb(20 43 74 / 0.18);
 
   --header-bg: var(--navy);
+  --header-edge: transparent;
   --on-header: var(--white);
   --on-header-soft: #c9d3e0;
   --header-line: rgb(255 255 255 / 0.4);
   --header-hover: rgb(255 255 255 / 0.1);
 
+  /* Raised navy surfaces: toast, skip link */
+  --raised-bg: var(--navy);
+  --on-raised: var(--white);
+
+  /* Green: progress and completion */
   --success: #16a34a;
+  --on-success: var(--white);
   --success-text: #166534;
   --success-tint: #f0fdf4;
   --success-soft: #dcfce7;
   --success-border: #bbf7d0;
-  --success-on-dark: #4ade80;
+  --success-on-raised: #4ade80;
+  --progress-fill: #15803d;  /* ≥3:1 against the track */
 
-  --warning-text: #8a4b00;   /* overdue wording: dark enough to read as text */
-
+  /* Red: delete and errors only */
   --danger: #b91c1c;
+  --on-danger: var(--white);
   --danger-hover: #991b1b;
   --danger-tint: #fef2f2;
   --danger-soft: #fee2e2;
@@ -78,13 +111,83 @@
   --shadow-lg: 0 16px 48px rgb(20 43 74 / 0.22);
   --backdrop: rgb(20 43 74 / 0.5);
 
-  color-scheme: light;
+  color-scheme: light dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  font-size: 16px;
-  line-height: 1.45;
+  font-size: 17px;
+  line-height: 1.5;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Dark theme: follows the device setting. Same roles, dark values. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1b2d;
+    --surface: #17263d;
+    --panel: #13223a;
+    --surface-muted: #1d2f4a;
+    --text: #f3ede6;
+    --text-soft: #d5dce6;
+    --muted: #a9b6c8;
+    --border: #2a3b55;
+    --border-strong: #6f819c;
+    --control-border: #8193ad;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23A9B6C8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+
+    --primary: #ff7a5c;
+    --primary-hover: #ff9478;
+    --on-primary: #0f1b2d;
+    --primary-tint: #40292d;
+    --primary-tint-hover: #4e3034;
+    --on-primary-tint: var(--text);
+
+    --reward: #ffc266;
+    --on-reward: #0f1b2d;
+    --reward-tint: #3a2e1a;
+
+    --selected-border: var(--text);
+    --selected-bg: #263f63;
+    --on-selected: var(--text);
+    --switch-on: var(--text);
+    --switch-knob-on: var(--surface);
+
+    --love: #ff8fab;
+    --love-tint: #3d2232;
+
+    --focus: var(--text);
+    --focus-glow: rgb(243 237 230 / 0.2);
+
+    --header-bg: var(--bg);
+    --header-edge: var(--border);
+    --on-header: var(--text);
+    --on-header-soft: var(--muted);
+
+    --raised-bg: #263a58;
+    --on-raised: var(--text);
+
+    --success: #4ade80;
+    --on-success: #0f1b2d;
+    --success-text: #86efac;
+    --success-tint: #16302d;
+    --success-soft: #1b4033;
+    --success-border: #2f6b4a;
+    --success-on-raised: #4ade80;
+    --progress-fill: var(--success);
+
+    --danger: #f87171;
+    --on-danger: #0f1b2d;
+    --danger-hover: #fca5a5;
+    --danger-tint: #3a1f29;
+    --danger-soft: #4a2531;
+    --danger-border: #7f2d3a;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.25), 0 4px 14px rgb(0 0 0 / 0.2);
+    --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.3), 0 8px 20px rgb(0 0 0 / 0.28);
+    --shadow-btn: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 16px 48px rgb(0 0 0 / 0.5);
+    --backdrop: rgb(4 9 18 / 0.7);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -117,8 +220,8 @@ svg { flex: none; }
   z-index: 30;
   padding: 8px 12px;
   border-radius: var(--radius-sm);
-  background: var(--navy);
-  color: var(--white);
+  background: var(--raised-bg);
+  color: var(--on-raised);
   text-decoration: none;
 }
 .skip-link:focus { top: 12px; }
@@ -143,11 +246,12 @@ svg { flex: none; }
 .app-header {
   margin-bottom: 24px;
   background: var(--header-bg);
+  border-bottom: 1px solid var(--header-edge);
   color: var(--on-header);
 }
 .app-header .eyebrow,
 .app-header .planning-summary { color: var(--on-header-soft); }
-.app-header :focus-visible { outline-color: var(--accent); }
+.app-header :focus-visible { outline-color: var(--on-header); }
 .app-header .btn-ghost {
   background: transparent;
   border-color: var(--header-line);
@@ -252,7 +356,8 @@ h1 {
 }
 .badge-neutral { background: var(--surface); color: var(--text-soft); border: 1px solid var(--border); }
 .badge-green { background: var(--success-soft); color: var(--success-text); padding: 1px 8px; }
-.badge-amber { background: var(--accent); color: var(--on-accent); }
+/* Neutral for now (was amber); the class is removed in a later step. */
+.badge-amber { background: var(--surface); color: var(--text-soft); border: 1px solid var(--border); }
 
 /* ─── Progress (above Today) ──────────────────────────────────────────── */
 .day-progress { margin-bottom: 14px; }
@@ -268,8 +373,8 @@ h1 {
 .day-progress-pct {
   padding: 1px 10px;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--success-soft);
+  color: var(--success-text);
   font-weight: 700;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
@@ -284,7 +389,7 @@ h1 {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--progress-fill);
   transition: width 400ms ease;
 }
 .day-progress-msg { margin-top: 6px; color: var(--muted); font-size: 0.85rem; }
@@ -323,14 +428,14 @@ h1 {
 .btn-quiet:hover:not(:disabled) { background: var(--surface-muted); color: var(--text); }
 
 /* Soft primary: secondary coral actions (e.g. backlog "Schedule today") */
-.btn-primary-soft { background: var(--primary-tint); color: var(--on-primary); }
+.btn-primary-soft { background: var(--primary-tint); color: var(--on-primary-tint); }
 .btn-primary-soft:hover:not(:disabled) { background: var(--primary-tint-hover); }
 
 /* Red is reserved for deleting: a red icon at rest, fully red on hover/focus. */
 .btn-delete svg { color: var(--danger); }
 .btn-delete:hover:not(:disabled),
 .btn-delete:focus-visible { background: var(--danger-tint); color: var(--danger-hover); }
-.btn-danger { background: var(--danger); color: var(--white); }
+.btn-danger { background: var(--danger); color: var(--on-danger); }
 .btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
 
 .icon-btn {
@@ -425,7 +530,7 @@ h1 {
   content: '';
   width: 10px;
   height: 6px;
-  border: solid var(--white);
+  border: solid var(--on-success);
   border-width: 0 0 2.5px 2.5px;
   transform: translateY(-1px) rotate(-45deg) scale(0);
   transition: transform 120ms;
@@ -501,11 +606,12 @@ h1 {
 .priority-high {
   padding: 1px 8px;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--surface-muted);
+  color: var(--text);
   font-weight: 700;
 }
-.meta-item.is-overdue { color: var(--warning-text); font-weight: 600; }
+/* Missed is not danger: same muted colour as other details. */
+.meta-item.is-overdue { color: var(--muted); }
 
 /* ─── Completed section (inside the Today card) ───────────────────────── */
 .completed { border-top: 1px solid var(--border); }
@@ -580,9 +686,7 @@ h1 {
   padding: 0 28px 0 25px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--bg)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234D6080' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
-    no-repeat right 9px center;
+  background: var(--bg) var(--chevron) no-repeat right 9px center;
   color: var(--text);
   font-size: 0.85rem;
   font-weight: 600;
@@ -601,9 +705,7 @@ h1 {
 .qa-error { flex-basis: 100%; margin: 0 0 4px; }
 
 /* ─── Backlog card ────────────────────────────────────────────────────── */
-/* A thick amber band (not a thin border) marks the backlog as needing attention. */
-.backlog-card { box-shadow: inset 0 5px 0 var(--accent); }
-.backlog-card.is-clear { box-shadow: none; }
+/* Warm neutral: the backlog is a calm place to review, not an alarm. */
 .backlog-header { flex-direction: column; align-items: flex-start; gap: 8px; }
 
 .attention-label {
@@ -611,10 +713,10 @@ h1 {
   align-items: center;
   gap: 6px;
   padding: 3px 10px;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--surface);
+  color: var(--text-soft);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -645,7 +747,7 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--warning-text);
+  color: var(--muted);
   font-size: 0.82rem;
   font-weight: 550;
 }
@@ -740,14 +842,14 @@ h1 {
   max-width: min(92vw, 440px);
   padding: 10px 16px 10px 12px;
   border-radius: 999px;
-  background: var(--navy);
-  color: var(--white);
+  background: var(--raised-bg);
+  color: var(--on-raised);
   font-size: 0.9rem;
   box-shadow: var(--shadow-lg);
   transform: translateX(-50%);
   animation: toast-in 200ms ease-out;
 }
-.toast-icon { color: var(--success-on-dark); }
+.toast-icon { color: var(--success-on-raised); }
 .toast-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 
@@ -822,7 +924,7 @@ h1 {
   margin-top: 8px;
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
-  border-left: 4px solid var(--primary);
+  border-left: 4px solid var(--muted);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text-soft);
@@ -851,9 +953,7 @@ h1 {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   appearance: none;
-  background: var(--surface)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234D6080' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
-    no-repeat right 12px center;
+  background: var(--surface) var(--chevron) no-repeat right 12px center;
 }
 .field select:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--focus-glow); }
 
@@ -917,9 +1017,9 @@ h1 {
   cursor: pointer;
 }
 .preset:hover { background: var(--surface-muted); }
-.preset.is-active { border-color: var(--navy); background: var(--accent); color: var(--on-accent); }
+.preset.is-active { border-color: var(--selected-border); background: var(--selected-bg); color: var(--on-selected); box-shadow: inset 0 0 0 1px var(--selected-border); }
 
-/* Priority: radio buttons as a segmented choice (selection = amber fill + navy outline + check) */
+/* Priority: radio buttons as a segmented choice (selection = navy outline + subtle fill + check) */
 .choice-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .choice-option {
   position: relative;
@@ -938,10 +1038,10 @@ h1 {
 .choice-option input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .choice-option:hover { background: var(--surface-muted); }
 .choice-option:has(input:checked) {
-  border-color: var(--navy);
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: inset 0 0 0 1px var(--navy);
+  border-color: var(--selected-border);
+  background: var(--selected-bg);
+  color: var(--on-selected);
+  box-shadow: inset 0 0 0 1px var(--selected-border);
 }
 .choice-option:has(input:checked) .category-check { display: block; }
 .choice-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -983,10 +1083,10 @@ h1 {
   background: var(--control-border);
   transition: transform 150ms, background-color 150ms;
 }
-.switch:checked { background: var(--accent); border-color: var(--navy); }
-.switch:checked::after { transform: translateX(18px); background: var(--navy); }
+.switch:checked { background: var(--switch-on); border-color: var(--switch-on); }
+.switch:checked::after { transform: translateX(18px); background: var(--switch-knob-on); }
 
-/* Category picker: category color as a dot; selection = amber fill + navy outline + check */
+/* Category picker: category color as a dot; selection = navy outline + subtle fill + check */
 .category-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .category-option {
   position: relative;
@@ -1006,13 +1106,13 @@ h1 {
 }
 .category-option input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .category-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--cat); }
-.category-check { display: none; color: var(--on-accent); }
+.category-check { display: none; color: var(--on-selected); }
 .category-option:hover { background: var(--surface-muted); }
 .category-option:has(input:checked) {
-  border-color: var(--navy);
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: inset 0 0 0 1px var(--navy);
+  border-color: var(--selected-border);
+  background: var(--selected-bg);
+  color: var(--on-selected);
+  box-shadow: inset 0 0 0 1px var(--selected-border);
 }
 .category-option:has(input:checked) .category-check { display: block; }
 .category-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -1035,7 +1135,7 @@ fieldset[aria-invalid='true'] .category-option { border-color: var(--danger); }
     z-index: 15;
     min-height: 52px;
     padding: 0 19px; /* 1px less to absorb the thicker border; same overall size */
-    border: 2px solid var(--navy); /* visible edge against the cream page */
+    border: 2px solid var(--on-primary); /* visible edge against the page */
     border-radius: 999px;
     box-shadow: var(--shadow-lg);
     transition: transform 180ms ease, opacity 180ms ease, visibility 0s;
