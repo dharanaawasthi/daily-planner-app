@@ -13,6 +13,7 @@
   "dependencies": {
     "@clerk/express": "^2.1.79",
     "better-sqlite3": "^12.2.0",
+    "cors": "^2.8.6",
     "express": "^5.1.0"
   }
 }

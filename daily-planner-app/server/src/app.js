@@ -6,6 +6,7 @@ import { createTaskRepository } from './db/taskRepository.js';
 import { HttpError } from './lib/errors.js';
 import { createClerkAuth } from './middleware/auth.js';
 import { createTasksRouter } from './routes/tasks.js';
+import cors from 'cors';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST = path.resolve(here, '../../client/dist');
@@ -20,6 +21,17 @@ export function createApp({ db, serveClient = true, auth = createClerkAuth() }) 
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '100kb' }));
+
+  app.use(
+  cors({
+    origin: [
+      'https://daily-planner-app-kappa.vercel.app',
+      'http://localhost:5173',
+    ],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }),
+   );
 
   // ── API ──────────────────────────────────────────────────────────────
   // Every /api request needs a verified Clerk session (401 JSON otherwise).
