@@ -16,10 +16,17 @@ if (!process.env.CLERK_SECRET_KEY) {
 
 const PORT = Number(process.env.PORT) || 3001;
 
-const db = openDatabase();
+let db;
+try {
+  db = await openDatabase();
+} catch (err) {
+  console.error(`Could not open the database: ${err.message}`);
+  process.exit(1);
+}
 
 const server = createApp({ db }).listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}/api`);
+  console.log(process.env.TURSO_DATABASE_URL ? 'Database: Turso (hosted)' : 'Database: local file (development only)');
 });
 
 function shutdown() {

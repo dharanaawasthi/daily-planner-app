@@ -5,7 +5,7 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { openDatabase } from '../src/db/connection.js';
 import { resetWithSampleTasks } from '../src/db/seed.js';
-import { TEST_USER_ID, testAuth } from './helpers.js';
+import { TEST_USER_ID, all, testAuth } from './helpers.js';
 
 const TODAY = '2026-10-15';
 
@@ -34,7 +34,7 @@ const findByTitle = async (title) =>
   (await get('/api/tasks')).body.find((t) => t.title === title);
 
 before(async () => {
-  db = openDatabase(':memory:');
+  db = await openDatabase(':memory:');
   server = createApp({ db, serveClient: false, auth: testAuth }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -45,13 +45,13 @@ after(() => {
   db.close();
 });
 
-beforeEach(() => {
-  resetWithSampleTasks(db, TEST_USER_ID, TODAY);
+beforeEach(async () => {
+  await resetWithSampleTasks(db, TEST_USER_ID, TODAY);
 });
 
 describe('schema', () => {
-  test('tasks table has exactly the data-model columns', () => {
-    const cols = db.prepare('PRAGMA table_info(tasks)').all().map((c) => c.name);
+  test('tasks table has exactly the data-model columns', async () => {
+    const cols = (await all(db, 'PRAGMA table_info(tasks)')).map((c) => c.name);
     assert.deepEqual(cols, [
       'id', 'ownerId', 'title', 'category', 'scheduledDate', 'startTime', 'endTime',
       'notes', 'status', 'completedAt', 'createdAt', 'updatedAt',
@@ -60,23 +60,26 @@ describe('schema', () => {
     ]);
   });
 
-  test('database rejects a "backlog" status — backlog is derived, not stored', () => {
-    assert.throws(() =>
-      db.prepare(`INSERT INTO tasks (ownerId, title, category, scheduledDate, status, createdAt, updatedAt)
-                  VALUES ('user_test', 'x', 'Study', '2026-10-01', 'backlog', 'now', 'now')`).run(),
+  test('database rejects a "backlog" status — backlog is derived, not stored', async () => {
+    await assert.rejects(
+      db.execute(`INSERT INTO tasks (ownerId, title, category, scheduledDate, status, createdAt, updatedAt)
+                  VALUES ('user_test', 'x', 'Study', '2026-10-01', 'backlog', 'now', 'now')`),
     );
   });
 
-  test('database keeps completedAt consistent with status', () => {
+  test('database keeps completedAt consistent with status', async () => {
     const insert = (status, completedAt) =>
-      db.prepare(`INSERT INTO tasks (ownerId, title, category, scheduledDate, status, completedAt, createdAt, updatedAt)
-                  VALUES ('user_test', 'x', 'Study', '2026-10-01', ?, ?, 'now', 'now')`).run(status, completedAt);
+      db.execute({
+        sql: `INSERT INTO tasks (ownerId, title, category, scheduledDate, status, completedAt, createdAt, updatedAt)
+              VALUES ('user_test', 'x', 'Study', '2026-10-01', ?, ?, 'now', 'now')`,
+        args: [status, completedAt],
+      });
 
-    assert.throws(() => insert('completed', null)); // completed needs a timestamp
-    assert.throws(() => insert('open', 'now')); // open must not have one
-    assert.throws(() => insert('dismissed', 'now')); // nor dismissed
-    assert.doesNotThrow(() => insert('completed', 'now'));
-    assert.doesNotThrow(() => insert('dismissed', null));
+    await assert.rejects(insert('completed', null)); // completed needs a timestamp
+    await assert.rejects(insert('open', 'now')); // open must not have one
+    await assert.rejects(insert('dismissed', 'now')); // nor dismissed
+    await assert.doesNotReject(insert('completed', 'now'));
+    await assert.doesNotReject(insert('dismissed', null));
   });
 });
 

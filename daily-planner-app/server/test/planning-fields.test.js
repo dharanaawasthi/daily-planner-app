@@ -150,17 +150,19 @@ describe('seed data and database constraints', () => {
     assert.equal(bill.dueDate, TODAY);
   });
 
-  test('the database itself rejects out-of-range values', () => {
+  test('the database itself rejects out-of-range values', async () => {
     const insert = (cols) =>
-      api.db.prepare(`INSERT INTO tasks (ownerId, title, category, scheduledDate, createdAt, updatedAt, ${Object.keys(cols).join(', ')})
-                      VALUES ('user_test', 'x', 'Study', '2026-10-01', 'now', 'now', ${Object.keys(cols).map(() => '?').join(', ')})`)
-        .run(...Object.values(cols));
-    assert.throws(() => insert({ durationMinutes: 1000 }));
-    assert.throws(() => insert({ durationMinutes: 30.5 }));
-    assert.throws(() => insert({ priority: 'urgent' }));
-    assert.throws(() => insert({ energy: 'high' }));
-    assert.throws(() => insert({ dueDate: 'tomorrow' }));
-    assert.throws(() => insert({ isFixed: 1 })); // fixed without a start time
-    assert.doesNotThrow(() => insert({ isFixed: 1, startTime: '09:00' }));
+      api.db.execute({
+        sql: `INSERT INTO tasks (ownerId, title, category, scheduledDate, createdAt, updatedAt, ${Object.keys(cols).join(', ')})
+              VALUES ('user_test', 'x', 'Study', '2026-10-01', 'now', 'now', ${Object.keys(cols).map(() => '?').join(', ')})`,
+        args: Object.values(cols),
+      });
+    await assert.rejects(insert({ durationMinutes: 1000 }));
+    await assert.rejects(insert({ durationMinutes: 30.5 }));
+    await assert.rejects(insert({ priority: 'urgent' }));
+    await assert.rejects(insert({ energy: 'high' }));
+    await assert.rejects(insert({ dueDate: 'tomorrow' }));
+    await assert.rejects(insert({ isFixed: 1 })); // fixed without a start time
+    await assert.doesNotReject(insert({ isFixed: 1, startTime: '09:00' }));
   });
 });

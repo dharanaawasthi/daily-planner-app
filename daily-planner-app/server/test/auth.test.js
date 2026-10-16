@@ -7,6 +7,7 @@ import express from 'express';
 import { createApp } from '../src/app.js';
 import { openDatabase } from '../src/db/connection.js';
 import { createClerkAuth } from '../src/middleware/auth.js';
+import { one } from './helpers.js';
 
 const FAKE_SECRET = 'sk_test_not_a_real_key';
 
@@ -36,7 +37,7 @@ describe('API without a valid Clerk session', () => {
   let base;
 
   before(async () => {
-    db = openDatabase(':memory:');
+    db = await openDatabase(':memory:');
     // The real Clerk middleware, as used in production.
     ({ server, base } = await listen(
       createApp({ db, serveClient: false, auth: createClerkAuth({ secretKey: FAKE_SECRET }) }),
@@ -82,9 +83,10 @@ describe('API without a valid Clerk session', () => {
   });
 
   test('rejected requests change nothing', async () => {
-    const before = db.prepare('SELECT COUNT(*) AS n FROM tasks').get().n;
+    const count = async () => (await one(db, 'SELECT COUNT(*) AS n FROM tasks')).n;
+    const before = await count();
     await call(base, 'POST', '/api/tasks', { body: { title: 'Sneaky', category: 'Career' } });
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM tasks').get().n, before);
+    assert.equal(await count(), before);
   });
 });
 
@@ -102,7 +104,7 @@ describe('API with a verified Clerk session', () => {
   let base;
 
   before(async () => {
-    db = openDatabase(':memory:');
+    db = await openDatabase(':memory:');
     const app = express();
     // A probe route to show what handlers receive.
     app.get('/api/whoami', createClerkAuth({ secretKey: FAKE_SECRET, verify }), (req, res) => {

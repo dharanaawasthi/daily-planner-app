@@ -10,6 +10,41 @@ const COLUMNS = `id, title, category, scheduledDate, startTime, endTime, notes,
 // in the order they were created.
 const BY_START_TIME = `ORDER BY startTime IS NULL, startTime, endTime, createdAt, id`;
 
+const SQL = {
+  byId: `SELECT ${COLUMNS} FROM tasks WHERE id = ? AND ownerId = ?`,
+
+  insert: `
+    INSERT INTO tasks (ownerId, title, category, scheduledDate, startTime, endTime, notes,
+                       status, completedAt, durationMinutes, priority, dueDate, isFixed, energy,
+                       createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+
+  update: `
+    UPDATE tasks
+       SET title = ?, category = ?, scheduledDate = ?,
+           startTime = ?, endTime = ?, notes = ?,
+           status = ?, completedAt = ?,
+           durationMinutes = ?, priority = ?, dueDate = ?,
+           isFixed = ?, energy = ?,
+           updatedAt = ?
+     WHERE id = ? AND ownerId = ?`,
+
+  remove: `DELETE FROM tasks WHERE id = ? AND ownerId = ?`,
+
+  forDateAndStatus: `
+    SELECT ${COLUMNS} FROM tasks
+     WHERE ownerId = ? AND scheduledDate = ? AND status = ?
+     ${BY_START_TIME}`,
+
+  // The backlog rule, and nothing else: open AND scheduled before today.
+  backlog: `
+    SELECT ${COLUMNS} FROM tasks
+     WHERE ownerId = ? AND status = 'open' AND scheduledDate < ?
+     ORDER BY scheduledDate, startTime IS NULL, startTime, createdAt, id`,
+
+  count: `SELECT COUNT(*) AS n FROM tasks WHERE ownerId = ?`,
+};
+
 /**
  * Every task belongs to one owner (the verified Clerk user ID). Refuse to run
  * any query without one, so a wiring mistake can never fall back to "all tasks".
@@ -21,129 +56,105 @@ function requireOwner(ownerId) {
   return ownerId;
 }
 
+/** Database rows → plain objects keyed by column name. */
+function rowsOf(result) {
+  return result.rows.map((row) => Object.fromEntries(result.columns.map((col) => [col, row[col]])));
+}
+
 /** SQLite stores booleans as 0/1; the API speaks true/false. */
 function toTask(row) {
   if (!row) return null;
-  return { ...row, isFixed: row.isFixed === 1 };
+  return { ...row, isFixed: Number(row.isFixed) === 1 };
 }
 
-/**
- * The exact parameters the INSERT/UPDATE statements expect. ownerId is never
- * taken from task fields: it is bound separately from the authenticated user.
- */
-function toRow(task) {
-  return {
-    title: task.title,
-    category: task.category,
-    scheduledDate: task.scheduledDate,
-    startTime: task.startTime,
-    endTime: task.endTime,
-    notes: task.notes,
-    status: task.status,
-    completedAt: task.completedAt,
-    durationMinutes: task.durationMinutes,
-    priority: task.priority,
-    dueDate: task.dueDate,
-    isFixed: task.isFixed ? 1 : 0,
-    energy: task.energy,
-    updatedAt: task.updatedAt,
-  };
+/** The user-editable values, in the column order of SQL.insert / SQL.update. */
+function editableValues(task) {
+  return [
+    task.title,
+    task.category,
+    task.scheduledDate,
+    task.startTime,
+    task.endTime,
+    task.notes,
+    task.status,
+    task.completedAt,
+    task.durationMinutes,
+    task.priority,
+    task.dueDate,
+    task.isFixed ? 1 : 0,
+    task.energy,
+  ];
+}
+
+/** Keep completedAt in sync with status. */
+function stampCompletion(task, previous) {
+  if (task.status !== 'completed') return null;
+  if (previous?.status === 'completed' && previous.completedAt) return previous.completedAt;
+  return nowIso();
+}
+
+function assertValid(task) {
+  const errors = checkTaskRules(task);
+  if (hasErrors(errors)) throw badRequest('Validation failed', errors);
 }
 
 /**
  * All SQL for tasks lives here. Routes call these methods and never touch
- * the database directly. Every method returns API-shaped tasks.
+ * the database directly. Every method is async and returns API-shaped tasks.
  *
  * Every method takes the owner's ID first and every statement filters on it,
  * so a task that belongs to someone else behaves exactly like one that
- * doesn't exist (null / false).
+ * doesn't exist (null / false). ownerId is never taken from task fields: it
+ * is bound separately from the authenticated user.
  */
 export function createTaskRepository(db) {
-  const stmt = {
-    byId: db.prepare(`SELECT ${COLUMNS} FROM tasks WHERE id = ? AND ownerId = ?`),
-
-    insert: db.prepare(`
-      INSERT INTO tasks (ownerId, title, category, scheduledDate, startTime, endTime, notes,
-                         status, completedAt, durationMinutes, priority, dueDate, isFixed, energy,
-                         createdAt, updatedAt)
-      VALUES (@ownerId, @title, @category, @scheduledDate, @startTime, @endTime, @notes,
-              @status, @completedAt, @durationMinutes, @priority, @dueDate, @isFixed, @energy,
-              @createdAt, @updatedAt)`),
-
-    update: db.prepare(`
-      UPDATE tasks
-         SET title = @title, category = @category, scheduledDate = @scheduledDate,
-             startTime = @startTime, endTime = @endTime, notes = @notes,
-             status = @status, completedAt = @completedAt,
-             durationMinutes = @durationMinutes, priority = @priority, dueDate = @dueDate,
-             isFixed = @isFixed, energy = @energy,
-             updatedAt = @updatedAt
-       WHERE id = @id AND ownerId = @ownerId`),
-
-    remove: db.prepare(`DELETE FROM tasks WHERE id = ? AND ownerId = ?`),
-
-    forDateAndStatus: db.prepare(`
-      SELECT ${COLUMNS} FROM tasks
-       WHERE ownerId = ? AND scheduledDate = ? AND status = ?
-       ${BY_START_TIME}`),
-
-    // The backlog rule, and nothing else: open AND scheduled before today.
-    backlog: db.prepare(`
-      SELECT ${COLUMNS} FROM tasks
-       WHERE ownerId = ? AND status = 'open' AND scheduledDate < ?
-       ORDER BY scheduledDate, startTime IS NULL, startTime, createdAt, id`),
-
-    count: db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ownerId = ?`),
-  };
-
-  /** Keep completedAt in sync with status. */
-  function stampCompletion(task, previous) {
-    if (task.status !== 'completed') return null;
-    if (previous?.status === 'completed' && previous.completedAt) return previous.completedAt;
-    return nowIso();
+  async function query(sql, args) {
+    return rowsOf(await db.execute({ sql, args }));
   }
 
-  function assertValid(task) {
-    const errors = checkTaskRules(task);
-    if (hasErrors(errors)) throw badRequest('Validation failed', errors);
-  }
-
-  return {
-    findById(ownerId, id) {
-      return toTask(stmt.byId.get(id, requireOwner(ownerId)));
+  const repo = {
+    async findById(ownerId, id) {
+      const [row] = await query(SQL.byId, [id, requireOwner(ownerId)]);
+      return toTask(row);
     },
 
     /** Flexible list for future views: optional date / status / category / range filters. */
-    list(ownerId, { date, from, to, status, category } = {}) {
+    async list(ownerId, { date, from, to, status, category } = {}) {
       const where = ['ownerId = ?'];
-      const params = [requireOwner(ownerId)];
-      if (date) { where.push('scheduledDate = ?'); params.push(date); }
-      if (from) { where.push('scheduledDate >= ?'); params.push(from); }
-      if (to) { where.push('scheduledDate <= ?'); params.push(to); }
-      if (status) { where.push('status = ?'); params.push(status); }
-      if (category) { where.push('category = ?'); params.push(category); }
+      const args = [requireOwner(ownerId)];
+      if (date) { where.push('scheduledDate = ?'); args.push(date); }
+      if (from) { where.push('scheduledDate >= ?'); args.push(from); }
+      if (to) { where.push('scheduledDate <= ?'); args.push(to); }
+      if (status) { where.push('status = ?'); args.push(status); }
+      if (category) { where.push('category = ?'); args.push(category); }
 
       const sql = `SELECT ${COLUMNS} FROM tasks
                    WHERE ${where.join(' AND ')}
                    ORDER BY scheduledDate, startTime IS NULL, startTime, createdAt, id`;
-      return db.prepare(sql).all(...params).map(toTask);
+      return (await query(sql, args)).map(toTask);
     },
 
     /** Everything the Today view needs, already split and sorted by start time. */
-    forDay(ownerId, date) {
+    async forDay(ownerId, date) {
       requireOwner(ownerId);
-      return {
-        open: stmt.forDateAndStatus.all(ownerId, date, 'open').map(toTask),
-        completed: stmt.forDateAndStatus.all(ownerId, date, 'completed').map(toTask),
-      };
+      const [open, completed] = await Promise.all([
+        query(SQL.forDateAndStatus, [ownerId, date, 'open']),
+        query(SQL.forDateAndStatus, [ownerId, date, 'completed']),
+      ]);
+      return { open: open.map(toTask), completed: completed.map(toTask) };
     },
 
-    backlog(ownerId, today) {
-      return stmt.backlog.all(requireOwner(ownerId), today).map(toTask);
+    async backlog(ownerId, today) {
+      return (await query(SQL.backlog, [requireOwner(ownerId), today])).map(toTask);
     },
 
-    /** Create a task owned by `ownerId` (any ownerId in `fields` is ignored). */
-    create(ownerId, fields) {
+    /**
+     * Build (but don't run) the INSERT for a new task owned by `ownerId`:
+     * applies defaults and validates. Used by create() and by the seed,
+     * which runs many inserts in one atomic batch. Any ownerId in `fields`
+     * is ignored.
+     */
+    insertStatement(ownerId, fields) {
       requireOwner(ownerId);
       const now = nowIso();
       const task = {
@@ -161,18 +172,22 @@ export function createTaskRepository(db) {
         dueDate: 'dueDate' in fields ? fields.dueDate : PLANNING_DEFAULTS.dueDate,
         isFixed: fields.isFixed ?? PLANNING_DEFAULTS.isFixed,
         energy: 'energy' in fields ? fields.energy : PLANNING_DEFAULTS.energy,
-        updatedAt: now,
       };
       task.completedAt = stampCompletion(task, null);
       assertValid(task);
 
-      const { lastInsertRowid } = stmt.insert.run({ ...toRow(task), ownerId, createdAt: now });
-      return this.findById(ownerId, Number(lastInsertRowid));
+      return { sql: SQL.insert, args: [ownerId, ...editableValues(task), now, now] };
+    },
+
+    /** Create a task owned by `ownerId` (any ownerId in `fields` is ignored). */
+    async create(ownerId, fields) {
+      const result = await db.execute(repo.insertStatement(ownerId, fields));
+      return repo.findById(ownerId, Number(result.lastInsertRowid));
     },
 
     /** Partial update. Returns the updated task, or null if the owner has no such task. */
-    update(ownerId, id, changes) {
-      const existing = this.findById(ownerId, id);
+    async update(ownerId, id, changes) {
+      const existing = await repo.findById(ownerId, id);
       if (!existing) return null;
 
       const task = { ...existing, ...changes };
@@ -182,24 +197,22 @@ export function createTaskRepository(db) {
       if (changes.startTime === null && !('endTime' in changes)) task.endTime = null;
 
       task.completedAt = stampCompletion(task, existing);
-      task.updatedAt = nowIso();
       assertValid(task);
 
-      stmt.update.run({ ...toRow(task), id, ownerId });
-      return this.findById(ownerId, id);
+      await db.execute({ sql: SQL.update, args: [...editableValues(task), nowIso(), id, ownerId] });
+      return repo.findById(ownerId, id);
     },
 
-    remove(ownerId, id) {
-      return stmt.remove.run(id, requireOwner(ownerId)).changes > 0;
+    async remove(ownerId, id) {
+      const result = await db.execute({ sql: SQL.remove, args: [id, requireOwner(ownerId)] });
+      return result.rowsAffected > 0;
     },
 
-    count(ownerId) {
-      return stmt.count.get(requireOwner(ownerId)).n;
-    },
-
-    /** Run several repository calls atomically. */
-    transaction(fn) {
-      return db.transaction(fn)();
+    async count(ownerId) {
+      const [row] = await query(SQL.count, [requireOwner(ownerId)]);
+      return Number(row.n);
     },
   };
+
+  return repo;
 }

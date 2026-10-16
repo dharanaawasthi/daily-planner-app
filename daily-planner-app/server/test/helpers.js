@@ -4,6 +4,17 @@ import { openDatabase } from '../src/db/connection.js';
 
 export const TEST_USER_ID = 'user_test';
 
+/** Run SQL directly (tests only) and get plain row objects back. */
+export async function all(db, sql, args = []) {
+  const result = await db.execute({ sql, args });
+  return result.rows.map((row) => Object.fromEntries(result.columns.map((col) => [col, row[col]])));
+}
+
+/** First row of a direct SQL query, or undefined. */
+export async function one(db, sql, args = []) {
+  return (await all(db, sql, args))[0];
+}
+
 /**
  * Header the test clients use to pick which fake user is signed in. Only the
  * test stand-in below reads it; production auth comes from Clerk's token.
@@ -19,7 +30,8 @@ export function testAuth(req, res, next) {
   next();
 }
 
-export async function startTestServer({ db = openDatabase(':memory:') } = {}) {
+export async function startTestServer({ db } = {}) {
+  db ??= await openDatabase(':memory:');
   const server = createApp({ db, serveClient: false, auth: testAuth }).listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;

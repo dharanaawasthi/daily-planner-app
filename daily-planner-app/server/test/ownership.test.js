@@ -7,7 +7,7 @@ import { createApp } from '../src/app.js';
 import { openDatabase } from '../src/db/connection.js';
 import { resetWithSampleTasks, sampleTasks } from '../src/db/seed.js';
 import { createTaskRepository } from '../src/db/taskRepository.js';
-import { startTestServer } from './helpers.js';
+import { one, startTestServer } from './helpers.js';
 
 const TODAY = '2026-10-15';
 const YESTERDAY = '2026-10-14';
@@ -29,7 +29,7 @@ before(async () => {
 after(() => api.close());
 
 beforeEach(async () => {
-  api.db.exec('DELETE FROM tasks');
+  await api.db.execute('DELETE FROM tasks');
   aliceTask = (await alice.post(`/api/tasks?today=${TODAY}`, {
     title: 'Alice private task', category: 'Study', scheduledDate: YESTERDAY, notes: 'secret',
   })).body;
@@ -39,7 +39,8 @@ beforeEach(async () => {
 });
 
 /** Alice's task straight from the database, including its owner. */
-const aliceRow = () => api.db.prepare('SELECT * FROM tasks WHERE id = ?').get(aliceTask.id);
+const aliceRow = () => one(api.db, 'SELECT * FROM tasks WHERE id = ?', [aliceTask.id]);
+const ownerOf = async (id) => (await one(api.db, 'SELECT ownerId FROM tasks WHERE id = ?', [id])).ownerId;
 const reply = ({ status, body }) => ({ status, body });
 
 describe("one user cannot touch another user's task", () => {
@@ -54,9 +55,9 @@ describe("one user cannot touch another user's task", () => {
 
   for (const [action, attempt] of Object.entries(attempts)) {
     test(`${action}: Bob gets 404 and Alice's task is unchanged`, async () => {
-      const before = aliceRow();
+      const before = await aliceRow();
       assert.deepEqual(reply(await attempt()), NOT_FOUND);
-      assert.deepEqual(aliceRow(), before);
+      assert.deepEqual(await aliceRow(), before);
       assert.equal((await alice.get(`/api/tasks/${aliceTask.id}`)).status, 200);
     });
   }
@@ -120,14 +121,14 @@ describe('the owner comes only from the verified session', () => {
   test('an ownerId in the create body is ignored', async () => {
     const created = await bob.post(`/api/tasks?today=${TODAY}`, { title: 'Planted', category: 'Personal', ownerId: ALICE });
     assert.equal(created.status, 201);
-    assert.equal(api.db.prepare('SELECT ownerId FROM tasks WHERE id = ?').get(created.body.id).ownerId, BOB);
+    assert.equal(await ownerOf(created.body.id), BOB);
     assert.ok(!(await alice.get('/api/tasks')).body.some((t) => t.title === 'Planted'));
   });
 
   test('an ownerId in an edit cannot transfer a task', async () => {
     const res = await bob.patch(`/api/tasks/${bobTask.id}`, { ownerId: ALICE, title: 'Still Bob' });
     assert.equal(res.status, 200);
-    assert.equal(api.db.prepare('SELECT ownerId FROM tasks WHERE id = ?').get(bobTask.id).ownerId, BOB);
+    assert.equal(await ownerOf(bobTask.id), BOB);
     assert.equal((await alice.get(`/api/tasks/${bobTask.id}`)).status, 404);
   });
 
@@ -178,7 +179,7 @@ describe('your own tasks work as before', () => {
 
 describe('defence in depth', () => {
   test('task routes answer 401 if no user ID reached them', async () => {
-    const db = openDatabase(':memory:');
+    const db = await openDatabase(':memory:');
     const server = createApp({ db, serveClient: false, auth: (req, res, next) => next() }).listen(0);
     await new Promise((resolve) => server.once('listening', resolve));
     try {
@@ -191,32 +192,33 @@ describe('defence in depth', () => {
     }
   });
 
-  test('the repository refuses to run without an owner', () => {
+  test('the repository refuses to run without an owner', async () => {
     const repo = createTaskRepository(api.db);
     for (const owner of [undefined, null, '', '  ', 42]) {
-      assert.throws(() => repo.list(owner), /without an owner/);
-      assert.throws(() => repo.findById(owner, aliceTask.id), /without an owner/);
-      assert.throws(() => repo.create(owner, { title: 'x', category: 'Study', scheduledDate: TODAY }), /without an owner/);
-      assert.throws(() => repo.update(owner, aliceTask.id, { title: 'x' }), /without an owner/);
-      assert.throws(() => repo.remove(owner, aliceTask.id), /without an owner/);
-      assert.throws(() => repo.forDay(owner, TODAY), /without an owner/);
-      assert.throws(() => repo.backlog(owner, TODAY), /without an owner/);
+      await assert.rejects(repo.list(owner), /without an owner/);
+      await assert.rejects(repo.findById(owner, aliceTask.id), /without an owner/);
+      await assert.rejects(repo.create(owner, { title: 'x', category: 'Study', scheduledDate: TODAY }), /without an owner/);
+      await assert.rejects(repo.update(owner, aliceTask.id, { title: 'x' }), /without an owner/);
+      await assert.rejects(repo.remove(owner, aliceTask.id), /without an owner/);
+      await assert.rejects(repo.forDay(owner, TODAY), /without an owner/);
+      await assert.rejects(repo.backlog(owner, TODAY), /without an owner/);
+      await assert.rejects(repo.count(owner), /without an owner/);
     }
   });
 });
 
 describe('sample data', () => {
-  test("seeding one user replaces only that user's tasks", () => {
-    const count = (owner) => api.db.prepare('SELECT COUNT(*) AS n FROM tasks WHERE ownerId = ?').get(owner).n;
-    resetWithSampleTasks(api.db, ALICE, TODAY);
-    resetWithSampleTasks(api.db, ALICE, TODAY); // re-running replaces, not duplicates
-    assert.equal(count(ALICE), sampleTasks(TODAY).length);
-    assert.equal(count(BOB), 1);
-    assert.ok(api.db.prepare('SELECT 1 FROM tasks WHERE id = ?').get(bobTask.id));
+  test("seeding one user replaces only that user's tasks", async () => {
+    const count = async (owner) => (await one(api.db, 'SELECT COUNT(*) AS n FROM tasks WHERE ownerId = ?', [owner])).n;
+    await resetWithSampleTasks(api.db, ALICE, TODAY);
+    await resetWithSampleTasks(api.db, ALICE, TODAY); // re-running replaces, not duplicates
+    assert.equal(await count(ALICE), sampleTasks(TODAY).length);
+    assert.equal(await count(BOB), 1);
+    assert.ok(await one(api.db, 'SELECT 1 FROM tasks WHERE id = ?', [bobTask.id]));
   });
 
-  test('seeding without an owner deletes nothing', () => {
-    assert.throws(() => resetWithSampleTasks(api.db, '', TODAY));
-    assert.equal(api.db.prepare('SELECT COUNT(*) AS n FROM tasks').get().n, 2);
+  test('seeding without an owner deletes nothing', async () => {
+    await assert.rejects(resetWithSampleTasks(api.db, '', TODAY));
+    assert.equal((await one(api.db, 'SELECT COUNT(*) AS n FROM tasks')).n, 2);
   });
 });

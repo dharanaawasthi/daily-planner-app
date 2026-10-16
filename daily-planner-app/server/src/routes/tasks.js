@@ -42,7 +42,7 @@ export function createTasksRouter(repo) {
   });
 
   // GET /api/tasks?date=&from=&to=&status=&category=
-  router.get('/', (req, res) => {
+  router.get('/', async (req, res) => {
     const { status, category } = req.query;
     if (status !== undefined && !STATUSES.includes(status)) {
       throw badRequest(`Query parameter "status" must be one of: ${STATUSES.join(', ')}`);
@@ -53,7 +53,7 @@ export function createTasksRouter(repo) {
     }
 
     res.json(
-      repo.list(req.userId, {
+      await repo.list(req.userId, {
         date: optionalDateQuery(req, 'date'),
         from: optionalDateQuery(req, 'from'),
         to: optionalDateQuery(req, 'to'),
@@ -65,31 +65,31 @@ export function createTasksRouter(repo) {
 
   // GET /api/tasks/today?today=YYYY-MM-DD
   // Today's tasks, split into open and completed, each sorted by start time.
-  router.get('/today', (req, res) => {
+  router.get('/today', async (req, res) => {
     const date = resolveToday(req);
-    res.json({ date, ...repo.forDay(req.userId, date) });
+    res.json({ date, ...(await repo.forDay(req.userId, date)) });
   });
 
   // GET /api/tasks/backlog?today=YYYY-MM-DD
   // Open tasks scheduled before today (oldest first).
-  router.get('/backlog', (req, res) => {
+  router.get('/backlog', async (req, res) => {
     const today = resolveToday(req);
-    res.json({ today, tasks: repo.backlog(req.userId, today) });
+    res.json({ today, tasks: await repo.backlog(req.userId, today) });
   });
 
   // GET /api/tasks/:id
-  router.get('/:id', (req, res) => {
-    const task = repo.findById(req.userId, parseId(req));
+  router.get('/:id', async (req, res) => {
+    const task = await repo.findById(req.userId, parseId(req));
     if (!task) throw notFound();
     res.json(task);
   });
 
   // POST /api/tasks
-  router.post('/', (req, res) => {
+  router.post('/', async (req, res) => {
     const { values, errors } = parseTaskInput(req.body ?? {}, { partial: false });
     if (hasErrors(errors)) throw badRequest('Validation failed', errors);
 
-    const task = repo.create(req.userId, {
+    const task = await repo.create(req.userId, {
       ...values,
       scheduledDate: values.scheduledDate ?? resolveToday(req),
     });
@@ -98,19 +98,19 @@ export function createTasksRouter(repo) {
 
   // PATCH /api/tasks/:id — edit any subset of fields, including status
   // (the "complete" checkbox sends { status: "completed" } / { status: "open" }).
-  router.patch('/:id', (req, res) => {
+  router.patch('/:id', async (req, res) => {
     const id = parseId(req);
     const { values, errors } = parseTaskInput(req.body ?? {}, { partial: true });
     if (hasErrors(errors)) throw badRequest('Validation failed', errors);
 
-    const task = repo.update(req.userId, id, values);
+    const task = await repo.update(req.userId, id, values);
     if (!task) throw notFound();
     res.json(task);
   });
 
   // POST /api/tasks/:id/reschedule  { "date": "YYYY-MM-DD" }
   // Backlog actions "Schedule for today" and "Choose another date".
-  router.post('/:id/reschedule', (req, res) => {
+  router.post('/:id/reschedule', async (req, res) => {
     const id = parseId(req);
     const today = resolveToday(req);
     const date = req.body?.date;
@@ -122,26 +122,26 @@ export function createTasksRouter(repo) {
       throw badRequest('Validation failed', { date: 'Choose today or a future date' });
     }
 
-    const existing = repo.findById(req.userId, id);
+    const existing = await repo.findById(req.userId, id);
     if (!existing) throw notFound();
     if (existing.status !== 'open') throw conflict(`Only open tasks can be rescheduled (this one is ${existing.status})`);
 
-    res.json(repo.update(req.userId, id, { scheduledDate: date }));
+    res.json(await repo.update(req.userId, id, { scheduledDate: date }));
   });
 
   // POST /api/tasks/:id/dismiss — backlog action "Dismiss"
-  router.post('/:id/dismiss', (req, res) => {
+  router.post('/:id/dismiss', async (req, res) => {
     const id = parseId(req);
-    const existing = repo.findById(req.userId, id);
+    const existing = await repo.findById(req.userId, id);
     if (!existing) throw notFound();
     if (existing.status !== 'open') throw conflict(`Only open tasks can be dismissed (this one is ${existing.status})`);
 
-    res.json(repo.update(req.userId, id, { status: 'dismissed' }));
+    res.json(await repo.update(req.userId, id, { status: 'dismissed' }));
   });
 
   // DELETE /api/tasks/:id
-  router.delete('/:id', (req, res) => {
-    if (!repo.remove(req.userId, parseId(req))) throw notFound();
+  router.delete('/:id', async (req, res) => {
+    if (!(await repo.remove(req.userId, parseId(req)))) throw notFound();
     res.status(204).end();
   });
 

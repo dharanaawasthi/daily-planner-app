@@ -45,26 +45,23 @@ export function sampleTasks(today) {
 
 /**
  * Give one user the sample tasks (does not clear their existing tasks).
- * Returns the count.
+ * All inserts run in one atomic batch. Returns the count.
  */
-export function seedSampleTasks(db, ownerId, today = localToday()) {
+export async function seedSampleTasks(db, ownerId, today = localToday()) {
   const repo = createTaskRepository(db);
-  const tasks = sampleTasks(today);
-  repo.transaction(() => {
-    for (const task of tasks) repo.create(ownerId, task);
-  });
-  return tasks.length;
+  const inserts = sampleTasks(today).map((task) => repo.insertStatement(ownerId, task));
+  await db.batch(inserts, 'write');
+  return inserts.length;
 }
 
 /**
- * Replace one user's tasks with the sample tasks. Other users' tasks are
- * untouched.
+ * Replace one user's tasks with the sample tasks, atomically. Other users'
+ * tasks are untouched. The owner is validated (by insertStatement) before
+ * anything is deleted.
  */
-export function resetWithSampleTasks(db, ownerId, today = localToday()) {
+export async function resetWithSampleTasks(db, ownerId, today = localToday()) {
   const repo = createTaskRepository(db);
-  return repo.transaction(() => {
-    repo.count(ownerId); // validates ownerId before anything is deleted
-    db.prepare('DELETE FROM tasks WHERE ownerId = ?').run(ownerId);
-    return seedSampleTasks(db, ownerId, today);
-  });
+  const inserts = sampleTasks(today).map((task) => repo.insertStatement(ownerId, task));
+  await db.batch([{ sql: 'DELETE FROM tasks WHERE ownerId = ?', args: [ownerId] }, ...inserts], 'write');
+  return inserts.length;
 }

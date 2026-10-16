@@ -13,9 +13,9 @@ if (!ownerId) {
   process.exit(1);
 }
 
-const db = openDatabase();
+const db = await openDatabase();
 const today = localToday();
-const count = resetWithSampleTasks(db, ownerId, today);
+const count = await resetWithSampleTasks(db, ownerId, today);
 db.close();
 
 console.log(`Replaced the tasks of ${ownerId} with ${count} sample tasks (today = ${today}).`);
