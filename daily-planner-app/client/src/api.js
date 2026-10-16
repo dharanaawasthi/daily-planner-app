@@ -11,7 +11,8 @@
 // (Authorization: Bearer …); the API answers 401 without one.
 
 const UNREACHABLE = 'Couldn’t reach the server. Check that it’s running and try again.';
-const API_URL = import.meta.env.VITE_API_URL;
+//const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = 'https://daily-planner-app-krx1.onrender.com';
 
 let getToken = async () => null;
 
