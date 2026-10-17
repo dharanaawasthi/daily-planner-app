@@ -57,6 +57,13 @@ export function usePlanner() {
     refresh();
   }, [today, refresh]);
 
+  // Count this day as a day the app was opened: on load, and again when the
+  // day rolls over while the app stays open. The server keeps one per day.
+  // Best-effort: a failure never affects the planner.
+  useEffect(() => {
+    api.logAppOpened(today).catch(() => {});
+  }, [today]);
+
   // If the app stays open past midnight, roll over to the new day: yesterday's
   // open tasks then show up in the backlog without a manual reload.
   useEffect(() => {
@@ -108,10 +115,16 @@ export function usePlanner() {
     (task, done) =>
       mutate(
         task,
-        () => api.setCompleted(task.id, done),
+        () => api.setCompleted(task.id, done, todayRef.current),
         done ? `Completed “${task.title}”` : `Moved “${task.title}” back to your list`,
         done ? `Couldn’t complete “${task.title}”.` : `Couldn’t reopen “${task.title}”.`,
       ),
+    [mutate],
+  );
+
+  const startTask = useCallback(
+    (task) =>
+      mutate(task, () => api.startTask(task.id, todayRef.current), 'Started. You’ve got this.', `Couldn’t start “${task.title}”.`),
     [mutate],
   );
 
@@ -145,7 +158,7 @@ export function usePlanner() {
 
   const dismiss = useCallback(
     (task) =>
-      mutate(task, () => api.dismiss(task.id), `Dismissed “${task.title}”`, `Couldn’t dismiss “${task.title}”.`),
+      mutate(task, () => api.dismiss(task.id, todayRef.current), `Dismissed “${task.title}”`, `Couldn’t dismiss “${task.title}”.`),
     [mutate],
   );
 
@@ -155,7 +168,7 @@ export function usePlanner() {
    */
   const saveTask = useCallback(
     async (payload, existing) => {
-      if (existing) await api.updateTask(existing.id, payload);
+      if (existing) await api.updateTask(existing.id, payload, todayRef.current);
       else await api.createTask(payload, todayRef.current);
       await refresh();
       notify('success', existing ? `Saved “${payload.title}”` : `Added “${payload.title}”`);
@@ -172,6 +185,6 @@ export function usePlanner() {
     notice,
     notify,
     clearNotice,
-    actions: { toggleComplete, deleteTask, scheduleToday, reschedule, dismiss, saveTask },
+    actions: { toggleComplete, startTask, deleteTask, scheduleToday, reschedule, dismiss, saveTask },
   };
 }

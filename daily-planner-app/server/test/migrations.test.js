@@ -1,5 +1,6 @@
 // Migrations: fresh databases, upgrading a version-1 database with real data
-// (002), the deliberate reset of shared tasks (003), databases from before
+// (002), the deliberate reset of shared tasks (003), keeping every task while
+// adding the started state and event log (004), databases from before
 // schema_migrations existed (PRAGMA user_version), idempotence, refusing a
 // database from a newer app, and choosing the hosted database in production.
 import assert from 'node:assert/strict';
@@ -73,9 +74,9 @@ describe('fresh database', () => {
   test('is created at the latest version with every migration applied', async () => {
     const db = await openDatabase(':memory:');
     assert.equal(await getSchemaVersion(db), SCHEMA_VERSION);
-    assert.equal(SCHEMA_VERSION, 3);
+    assert.equal(SCHEMA_VERSION, 4);
     const versions = (await all(db, 'SELECT version FROM schema_migrations ORDER BY version')).map((r) => r.version);
-    assert.deepEqual(versions, [1, 2, 3]);
+    assert.deepEqual(versions, [1, 2, 3, 4]);
     db.close();
   });
 
@@ -164,7 +165,7 @@ describe('migration 002 on a version-1 database', () => {
 });
 
 describe('databases from the previous app version (PRAGMA user_version)', () => {
-  test('a version-3 database keeps its tasks and is not migrated again', async () => {
+  test('a version-3 database keeps its tasks and is not reset again by 003', async () => {
     const file = path.join(tmpDir, 'legacy-v3.db');
     const db = rawClient(file);
     await db.batch(
@@ -183,7 +184,7 @@ describe('databases from the previous app version (PRAGMA user_version)', () => 
 
     const opened = await openDatabase(file);
     try {
-      assert.equal(await getSchemaVersion(opened), 3);
+      assert.equal(await getSchemaVersion(opened), SCHEMA_VERSION, 'only the newer migrations ran');
       assert.deepEqual((await all(opened, 'SELECT title FROM tasks')).map((r) => r.title), ['Kept']);
     } finally {
       opened.close();
@@ -244,6 +245,106 @@ describe('migration 003: private tasks (resets the old shared tasks)', () => {
     } finally {
       api.close();
     }
+  });
+});
+
+describe('migration 004 on a version-3 database with tasks', () => {
+  const V3_ROWS = [
+    // ownerId, title, scheduledDate, startTime, endTime, notes, status, completedAt, createdAt, updatedAt, duration, priority, dueDate, isFixed, energy
+    ['user_a', 'Open timed', '2026-10-15', '09:00', '10:30', 'private notes', 'open', null, '2026-10-01T08:00:00.000Z', '2026-10-02T08:00:00.000Z', 90, 'high', '2026-10-20', 1, 'deep'],
+    ['user_a', 'Done', '2026-10-15', null, null, '', 'completed', '2026-10-15T12:05:00.000Z', '2026-10-01T08:00:00.000Z', '2026-10-15T12:05:00.000Z', 60, 'medium', null, 0, null],
+    ['user_b', 'Dropped', '2026-10-10', null, null, 'n', 'dismissed', null, '2026-10-01T08:00:00.000Z', '2026-10-03T08:00:00.000Z', 30, 'low', null, 0, 'light'],
+    ['user_b', 'Deleted later', '2026-10-11', null, null, '', 'open', null, '2026-10-01T08:00:00.000Z', '2026-10-01T08:00:00.000Z', 60, 'medium', null, 0, 'normal'],
+  ];
+  const INSERT_V3 = `INSERT INTO tasks (ownerId, title, scheduledDate, startTime, endTime, notes, status, completedAt,
+                                        createdAt, updatedAt, durationMinutes, priority, dueDate, isFixed, energy, category)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Study')`;
+
+  /** A database at version 3 (schema_migrations 1–3) with tasks; the last one deleted. */
+  async function createVersion3Database(file) {
+    const db = rawClient(file);
+    await getSchemaVersion(db); // creates schema_migrations
+    for (const v of [1, 2, 3]) await applyMigration(db, v);
+    await db.batch(V3_ROWS.map((args) => ({ sql: INSERT_V3, args })), 'write');
+    await db.execute("DELETE FROM tasks WHERE title = 'Deleted later'");
+    const before = await all(db, 'SELECT * FROM tasks ORDER BY id');
+    db.close();
+    return before;
+  }
+
+  const file = path.join(tmpDir, 'v3-to-v4.db');
+  let before;
+  let db;
+  after(() => db?.close());
+
+  test('upgrades from version 3 to 4', async () => {
+    before = await createVersion3Database(file);
+    assert.equal(before.length, 3);
+    db = await openDatabase(file);
+    assert.equal(await getSchemaVersion(db), 4);
+  });
+
+  test('keeps every task with every value unchanged, and startedAt is null', async () => {
+    const rows = await all(db, 'SELECT * FROM tasks ORDER BY id');
+    assert.equal(rows.length, before.length);
+    for (const [i, old] of before.entries()) {
+      for (const [k, v] of Object.entries(old)) assert.deepEqual(rows[i][k], v, `${old.title}.${k}`);
+      assert.equal(rows[i].startedAt, null);
+    }
+  });
+
+  test('the id of a deleted task is not reused', async () => {
+    const { lastInsertRowid } = await db.execute(
+      `INSERT INTO tasks (ownerId, title, category, scheduledDate, createdAt, updatedAt)
+       VALUES ('user_a', 'New', 'Gym', '2026-10-16', 'now', 'now')`,
+    );
+    assert.equal(Number(lastInsertRowid), 5, 'ids 1–4 were used before the upgrade');
+  });
+
+  test('keeps the indexes and adds the started-task and event indexes', async () => {
+    const names = (await all(db, "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'")).map((r) => r.name);
+    assert.deepEqual(names.sort(), [
+      'idx_task_events_app_opened_per_day',
+      'idx_task_events_owner_time',
+      'idx_tasks_one_started_per_owner',
+      'idx_tasks_owner_date_status',
+      'idx_tasks_owner_due_date',
+      'idx_tasks_owner_status_date',
+    ]);
+  });
+
+  test('creates an empty task_events table with no free-text columns', async () => {
+    const cols = (await all(db, 'PRAGMA table_info(task_events)')).map((c) => c.name);
+    assert.deepEqual(cols, ['id', 'ownerId', 'taskId', 'type', 'occurredAt', 'localDate']);
+    assert.equal((await one(db, 'SELECT COUNT(*) AS n FROM task_events')).n, 0);
+  });
+
+  test('the database enforces the started rules itself', async () => {
+    const insert = (status, startedAt, ownerId = 'user_c') =>
+      db.execute({
+        sql: `INSERT INTO tasks (ownerId, title, category, scheduledDate, status, startedAt, createdAt, updatedAt)
+              VALUES (?, 'x', 'Study', '2026-10-16', ?, ?, 'now', 'now')`,
+        args: [ownerId, status, startedAt],
+      });
+    await assert.rejects(insert('started', null), 'started needs startedAt');
+    await assert.doesNotReject(insert('started', '2026-10-16T09:00:00.000Z'));
+    await assert.rejects(insert('started', '2026-10-16T09:05:00.000Z'), 'only one started task per owner');
+    await assert.doesNotReject(insert('started', '2026-10-16T09:05:00.000Z', 'user_d'), 'other owners are independent');
+    await assert.doesNotReject(insert('open', '2026-10-16T09:00:00.000Z'), 'a paused task keeps its startedAt');
+  });
+
+  test('a failing 004 leaves the database at version 3 with its tasks', async () => {
+    const broken = path.join(tmpDir, 'v3-broken.db');
+    const kept = await createVersion3Database(broken);
+    const raw = rawClient(broken);
+    // Make 004 fail AFTER it has dropped and renamed tasks: task_events exists.
+    await raw.execute('CREATE TABLE task_events (x INTEGER)');
+    await assert.rejects(migrate(raw));
+    assert.equal(await getSchemaVersion(raw), 3);
+    assert.deepEqual(await all(raw, 'SELECT * FROM tasks ORDER BY id'), kept);
+    const cols = (await all(raw, 'PRAGMA table_info(tasks)')).map((c) => c.name);
+    assert.ok(!cols.includes('startedAt'), 'the rebuild was rolled back');
+    raw.close();
   });
 });
 

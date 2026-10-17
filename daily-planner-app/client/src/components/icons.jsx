@@ -33,6 +33,10 @@ export const CloseIcon = (p) => (
   <svg {...base} {...p}><path d="M6 6l12 12M18 6L6 18" /></svg>
 );
 
+export const PlayIcon = (p) => (
+  <svg {...base} {...p}><path d="M8 5.5v13l10-6.5-10-6.5z" /></svg>
+);
+
 export const CheckIcon = (p) => (
   <svg {...base} {...p}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 );

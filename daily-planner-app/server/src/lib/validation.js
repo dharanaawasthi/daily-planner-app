@@ -1,7 +1,10 @@
 import { isValidDate, isValidTime } from './dates.js';
 
 export const CATEGORIES = ['Study', 'Gym', 'Career', 'Personal'];
-export const STATUSES = ['open', 'completed', 'dismissed'];
+export const STATUSES = ['open', 'started', 'completed', 'dismissed'];
+
+/** Not yet done: shown in Today and the backlog, counted as "to do". */
+export const NOT_DONE_STATUSES = ['open', 'started'];
 export const PRIORITIES = ['low', 'medium', 'high'];
 export const ENERGY_LEVELS = ['deep', 'normal', 'light'];
 
@@ -31,7 +34,7 @@ export function normalizeCategory(value) {
  * - `partial: false` (create): title and category are required.
  * - `partial: true`  (update): only the fields present are checked.
  *
- * Read-only fields (id, completedAt, createdAt, updatedAt) and unknown fields
+ * Read-only fields (id, completedAt, startedAt, createdAt, updatedAt) and unknown fields
  * are ignored, so a client can safely send a whole task object back.
  * Defaults for omitted fields are applied by the repository, not here.
  *
@@ -90,6 +93,9 @@ export function parseTaskInput(body, { partial }) {
   // status
   if (has(body, 'status')) {
     if (!STATUSES.includes(body.status)) errors.status = `Status must be one of: ${STATUSES.join(', ')}`;
+    // Starting has its own rules (one started task per user), so it only
+    // happens through POST /api/tasks/:id/start.
+    else if (body.status === 'started') errors.status = 'Use POST /api/tasks/:id/start to start a task';
     else values.status = body.status;
   }
 

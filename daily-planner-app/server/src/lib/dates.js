@@ -21,6 +21,17 @@ export function localToday(now = new Date()) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/**
+ * True when a date sent by a browser as "my today" could really be today
+ * somewhere on Earth: time zones run from UTC−12 to UTC+14, so it must be
+ * within one day of the current UTC date.
+ */
+export function isPlausibleLocalDate(value, now = new Date()) {
+  if (!isValidDate(value)) return false;
+  const utcToday = now.toISOString().slice(0, 10);
+  return value >= addDays(utcToday, -1) && value <= addDays(utcToday, 1);
+}
+
 /** Add (or subtract) whole days to a YYYY-MM-DD date. */
 export function addDays(isoDate, days) {
   const [y, m, d] = isoDate.split('-').map(Number);

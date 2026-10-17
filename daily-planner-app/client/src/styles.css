@@ -693,6 +693,25 @@ h1 {
 .task-dot { grid-area: dot; width: 10px; height: 10px; border-radius: 50%; background: var(--cat); }
 .task-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 
+/* Started: an "In progress" label (icon + words) under the title, in the
+   navy "selected" role — not amber (rewards) and not coral (main action). */
+.status-in-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--selected-border);
+  border-radius: 999px;
+  background: var(--selected-bg);
+  color: var(--on-selected);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.task-open:has(.task-status) { grid-template-areas: 'time title dot' '. status dot'; row-gap: 4px; }
+.task-status { grid-area: status; justify-self: start; }
+
 /* Completed: pale green row, green check, struck-through title. */
 .task.is-done { background: var(--success-tint); }
 .task.is-done .task-title {
@@ -716,6 +735,7 @@ h1 {
 .sheet-done { color: var(--success-text); font-weight: 650; }
 .sheet-notes { margin-top: 14px; color: var(--text-soft); white-space: pre-line; overflow-wrap: anywhere; }
 .sheet-delete { margin-right: auto; }
+.sheet-in-progress { align-self: center; padding: 6px 14px; font-size: 0.9rem; }
 
 /* ─── Planning details on rows ────────────────────────────────────────── */
 .task-meta { display: contents; }
@@ -1267,6 +1287,8 @@ fieldset[aria-invalid='true'] .category-option { border-color: var(--danger); }
     grid-template-areas: 'time dot' 'title dot';
     row-gap: 1px;
   }
+  .task-open:has(.task-status) { grid-template-areas: 'time dot' 'title dot' 'status dot'; row-gap: 1px; }
+  .task-status { margin-top: 3px; }
   .task-list, .backlog-list { padding: 0 12px 12px; gap: 8px; }
   .task-time { font-size: 0.8rem; }
 
@@ -1299,6 +1321,11 @@ fieldset[aria-invalid='true'] .category-option { border-color: var(--danger); }
   }
   .modal-footer { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
   .modal-footer .btn { flex: 1; }
+  /* Task sheet: Start (or "In progress") gets its own full-width row on top,
+     where the thumb is; Delete, Close and Edit share the row below. */
+  .sheet-footer { flex-wrap: wrap; }
+  .sheet-footer .sheet-start { flex: 1 1 100%; order: -1; justify-content: center; }
+  .sheet-footer .sheet-delete { margin-right: 0; }
   @keyframes modal-in { from { transform: translateY(24px); opacity: 0; } }
 }
 

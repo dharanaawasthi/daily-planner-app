@@ -57,6 +57,8 @@ describe('schema', () => {
       'notes', 'status', 'completedAt', 'createdAt', 'updatedAt',
       // planning fields (migration 002)
       'durationMinutes', 'priority', 'dueDate', 'isFixed', 'energy',
+      // started state (migration 004)
+      'startedAt',
     ]);
   });
 

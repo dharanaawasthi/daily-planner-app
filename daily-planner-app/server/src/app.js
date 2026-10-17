@@ -2,9 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import { createEventRepository } from './db/events.js';
 import { createTaskRepository } from './db/taskRepository.js';
 import { HttpError } from './lib/errors.js';
 import { createClerkAuth } from './middleware/auth.js';
+import { createEventsRouter } from './routes/events.js';
 import { createTasksRouter } from './routes/tasks.js';
 import cors from 'cors';
 
@@ -42,6 +44,7 @@ export function createApp({ db, serveClient = true, auth = createClerkAuth() }) 
   });
 
   app.use('/api/tasks', createTasksRouter(createTaskRepository(db)));
+  app.use('/api/events', createEventsRouter(createEventRepository(db)));
 
   // Unknown /api routes get a JSON 404 rather than the React app.
   app.use('/api', (req, res) => {

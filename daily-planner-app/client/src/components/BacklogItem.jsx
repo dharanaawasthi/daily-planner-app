@@ -1,10 +1,11 @@
 import { useId, useState } from 'react';
 import { addDays, formatShortDate, formatTime, relativeDay } from '../lib/dates.js';
 import CategoryChip from './CategoryChip.jsx';
+import { InProgressLabel } from './TaskItem.jsx';
 import TaskMeta from './TaskMeta.jsx';
 import { CalendarIcon, ClockIcon } from './icons.jsx';
 
-/** An open task from a previous day, with Schedule today / Pick date / Dismiss. */
+/** A not-done task from a previous day, with Schedule today / Pick date / Dismiss. */
 export default function BacklogItem({ task, today, busy, onScheduleToday, onReschedule, onDismiss }) {
   const uid = useId();
   const titleId = `${uid}-title`;
@@ -33,6 +34,7 @@ export default function BacklogItem({ task, today, busy, onScheduleToday, onResc
           {task.title}
         </p>
         <p className="backlog-meta">
+          {task.status === 'started' && <InProgressLabel />}
           <CategoryChip category={task.category} />
           <span className="overdue" title={formatShortDate(task.scheduledDate)}>
             <ClockIcon width={13} height={13} />

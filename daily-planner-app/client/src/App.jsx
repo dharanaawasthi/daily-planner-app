@@ -136,6 +136,16 @@ function Planner() {
     setSheetTaskId(null);
     setTaskToDelete(task);
   }, []);
+  // Start from the sheet: close it (focus returns to the row), then start;
+  // the toast confirms it.
+  const { startTask } = actions;
+  const startFromSheet = useCallback(
+    (task) => {
+      setSheetTaskId(null);
+      startTask(task);
+    },
+    [startTask],
+  );
 
   const sheetTask = sheetTaskId && data ? [...data.open, ...data.completed].find((t) => t.id === sheetTaskId) : null;
   // The task left Today (deleted elsewhere, midnight rollover): close the sheet.
@@ -268,6 +278,7 @@ function Planner() {
       <TaskSheet
         task={sheetTask}
         today={today}
+        onStart={startFromSheet}
         onEdit={editFromSheet}
         onDelete={deleteFromSheet}
         onClose={closeSheet}

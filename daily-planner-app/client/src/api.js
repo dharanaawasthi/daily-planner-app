@@ -3,16 +3,16 @@
 // when the server rejects a request.
 //
 // The browser decides what "today" is and passes it along, so the backlog
-// rule (status = open AND scheduledDate < today) follows the user's time zone,
-// not the server's.
+// rule (not done AND scheduledDate < today) and the day each event is counted
+// on follow the user's time zone, not the server's.
 
 //
 // Every request carries the signed-in user's Clerk session token
 // (Authorization: Bearer …); the API answers 401 without one.
 
 const UNREACHABLE = 'Couldn’t reach the server. Check that it’s running and try again.';
-//const API_URL = import.meta.env.VITE_API_URL;
-const API_URL = 'https://daily-planner-app-krx1.onrender.com';
+// client/.env.local sets VITE_API_URL=http://localhost:3001 for local development.
+const API_URL = import.meta.env.VITE_API_URL || 'https://daily-planner-app-krx1.onrender.com';
 
 let getToken = async () => null;
 
@@ -67,10 +67,11 @@ const q = (params) => {
 export const api = {
   health: () => request('/health'),
 
-  /** { date, open: Task[], completed: Task[] } — both sorted by start time */
+  /** { date, open: Task[], completed: Task[] } — sorted by start time; `open`
+   *  holds every not-done task (open or started, the started one first) */
   getDay: (date) => request(`/tasks/today${q({ today: date })}`),
 
-  /** { today, tasks: Task[] } — open tasks scheduled before today */
+  /** { today, tasks: Task[] } — not-done tasks scheduled before today */
   getBacklog: (today) => request(`/tasks/backlog${q({ today })}`),
 
   listTasks: (filters = {}) => request(`/tasks${q(filters)}`),
@@ -79,17 +80,24 @@ export const api = {
   /** `today` is used as the scheduledDate when the task doesn't set one. */
   createTask: (task, today) =>
     request(`/tasks${q({ today })}`, { method: 'POST', body: task }),
-  updateTask: (id, changes) => request(`/tasks/${id}`, { method: 'PATCH', body: changes }),
+  updateTask: (id, changes, today) => request(`/tasks/${id}${q({ today })}`, { method: 'PATCH', body: changes }),
   deleteTask: (id) => request(`/tasks/${id}`, { method: 'DELETE' }),
 
-  /** Checkbox: completed <-> open (server stamps / clears completedAt) */
-  setCompleted: (id, done) =>
-    request(`/tasks/${id}`, { method: 'PATCH', body: { status: done ? 'completed' : 'open' } }),
+  /** Checkbox: completed <-> not done (server stamps / clears completedAt;
+   *  unticking returns a previously started task to 'started' when it can) */
+  setCompleted: (id, done, today) =>
+    request(`/tasks/${id}${q({ today })}`, { method: 'PATCH', body: { status: done ? 'completed' : 'open' } }),
+
+  /** Start a task; the server moves any other started task back to open. */
+  startTask: (id, today) => request(`/tasks/${id}/start${q({ today })}`, { method: 'POST' }),
+
+  /** Tell the server the app was opened today (stored once per day). */
+  logAppOpened: (today) => request('/events', { method: 'POST', body: { type: 'app_opened', date: today } }),
 
   // Backlog actions
   scheduleForToday: (id, today) =>
     request(`/tasks/${id}/reschedule${q({ today })}`, { method: 'POST', body: { date: today } }),
   reschedule: (id, date, today) =>
     request(`/tasks/${id}/reschedule${q({ today })}`, { method: 'POST', body: { date } }),
-  dismiss: (id) => request(`/tasks/${id}/dismiss`, { method: 'POST' }),
+  dismiss: (id, today) => request(`/tasks/${id}/dismiss${q({ today })}`, { method: 'POST' }),
 };

@@ -1,7 +1,7 @@
 import express from 'express';
-import { isValidDate, localToday } from '../lib/dates.js';
+import { isPlausibleLocalDate, isValidDate, localToday } from '../lib/dates.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
-import { STATUSES, hasErrors, normalizeCategory, parseTaskInput } from '../lib/validation.js';
+import { NOT_DONE_STATUSES, STATUSES, hasErrors, normalizeCategory, parseTaskInput } from '../lib/validation.js';
 
 /**
  * "Today" comes from the client (?today=YYYY-MM-DD) so the backlog rule
@@ -12,6 +12,16 @@ function resolveToday(req) {
   if (today === undefined) return localToday();
   if (!isValidDate(today)) throw badRequest('Query parameter "today" must be a date in YYYY-MM-DD format');
   return today;
+}
+
+/**
+ * The user's calendar day for the events a request writes: their ?today if it
+ * is plausible (within a day of now in UTC), otherwise the server's date. A
+ * wrong device clock never blocks the action itself.
+ */
+function eventOptions(req) {
+  const today = resolveToday(req);
+  return { localDate: isPlausibleLocalDate(today) ? today : localToday() };
 }
 
 function parseId(req) {
@@ -64,14 +74,15 @@ export function createTasksRouter(repo) {
   });
 
   // GET /api/tasks/today?today=YYYY-MM-DD
-  // Today's tasks, split into open and completed, each sorted by start time.
+  // Today's tasks, split into open (not yet done: open or started, the started
+  // one first) and completed, each sorted by start time.
   router.get('/today', async (req, res) => {
     const date = resolveToday(req);
     res.json({ date, ...(await repo.forDay(req.userId, date)) });
   });
 
   // GET /api/tasks/backlog?today=YYYY-MM-DD
-  // Open tasks scheduled before today (oldest first).
+  // Not-done tasks scheduled before today (a started one first, then oldest first).
   router.get('/backlog', async (req, res) => {
     const today = resolveToday(req);
     res.json({ today, tasks: await repo.backlog(req.userId, today) });
@@ -89,27 +100,39 @@ export function createTasksRouter(repo) {
     const { values, errors } = parseTaskInput(req.body ?? {}, { partial: false });
     if (hasErrors(errors)) throw badRequest('Validation failed', errors);
 
-    const task = await repo.create(req.userId, {
-      ...values,
-      scheduledDate: values.scheduledDate ?? resolveToday(req),
-    });
+    const task = await repo.create(
+      req.userId,
+      { ...values, scheduledDate: values.scheduledDate ?? resolveToday(req) },
+      eventOptions(req),
+    );
     res.status(201).location(`/api/tasks/${task.id}`).json(task);
   });
 
   // PATCH /api/tasks/:id — edit any subset of fields, including status
-  // (the "complete" checkbox sends { status: "completed" } / { status: "open" }).
+  // (the "complete" checkbox sends { status: "completed" } / { status: "open" };
+  // unticking returns a previously started task to 'started' when it can).
+  // { status: "started" } is rejected: use POST /:id/start.
   router.patch('/:id', async (req, res) => {
     const id = parseId(req);
     const { values, errors } = parseTaskInput(req.body ?? {}, { partial: true });
     if (hasErrors(errors)) throw badRequest('Validation failed', errors);
 
-    const task = await repo.update(req.userId, id, values);
+    const task = await repo.update(req.userId, id, values, eventOptions(req));
+    if (!task) throw notFound();
+    res.json(task);
+  });
+
+  // POST /api/tasks/:id/start — "Start" in the task sheet. Only one task per
+  // user is started: any other started task goes back to open.
+  router.post('/:id/start', async (req, res) => {
+    const task = await repo.start(req.userId, parseId(req), eventOptions(req));
     if (!task) throw notFound();
     res.json(task);
   });
 
   // POST /api/tasks/:id/reschedule  { "date": "YYYY-MM-DD" }
-  // Backlog actions "Schedule for today" and "Choose another date".
+  // Backlog actions "Schedule for today" and "Choose another date". A started
+  // task may be rescheduled; it then goes back to open.
   router.post('/:id/reschedule', async (req, res) => {
     const id = parseId(req);
     const today = resolveToday(req);
@@ -124,19 +147,23 @@ export function createTasksRouter(repo) {
 
     const existing = await repo.findById(req.userId, id);
     if (!existing) throw notFound();
-    if (existing.status !== 'open') throw conflict(`Only open tasks can be rescheduled (this one is ${existing.status})`);
+    if (!NOT_DONE_STATUSES.includes(existing.status)) {
+      throw conflict(`Only open tasks can be rescheduled (this one is ${existing.status})`);
+    }
 
-    res.json(await repo.update(req.userId, id, { scheduledDate: date }));
+    res.json(await repo.update(req.userId, id, { scheduledDate: date }, eventOptions(req)));
   });
 
-  // POST /api/tasks/:id/dismiss — backlog action "Dismiss"
+  // POST /api/tasks/:id/dismiss — backlog action "Dismiss" (open or started tasks)
   router.post('/:id/dismiss', async (req, res) => {
     const id = parseId(req);
     const existing = await repo.findById(req.userId, id);
     if (!existing) throw notFound();
-    if (existing.status !== 'open') throw conflict(`Only open tasks can be dismissed (this one is ${existing.status})`);
+    if (!NOT_DONE_STATUSES.includes(existing.status)) {
+      throw conflict(`Only open tasks can be dismissed (this one is ${existing.status})`);
+    }
 
-    res.json(await repo.update(req.userId, id, { status: 'dismissed' }));
+    res.json(await repo.update(req.userId, id, { status: 'dismissed' }, eventOptions(req)));
   });
 
   // DELETE /api/tasks/:id
